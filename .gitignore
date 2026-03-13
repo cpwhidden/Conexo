@@ -35,3 +35,6 @@ client_secret_*.json
 
 # Claude Code
 .claude/
+
+# Playwright MCP
+.playwright-mcp/
