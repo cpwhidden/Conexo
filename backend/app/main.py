@@ -1,0 +1,37 @@
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from app.api.routes import auth, collections, connections, moves, sequences, themes, videos
+from app.core.config import settings
+
+app = FastAPI(title="Conexo", version="0.1.0")
+
+# Serve local uploads directory when using local storage
+if settings.use_local_storage:
+    uploads_path = Path(settings.local_storage_path)
+    uploads_path.mkdir(parents=True, exist_ok=True)
+    app.mount("/api/uploads", StaticFiles(directory=str(uploads_path)), name="uploads")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth.router, prefix="/api")
+app.include_router(moves.router, prefix="/api")
+app.include_router(videos.router, prefix="/api")
+app.include_router(connections.router, prefix="/api")
+app.include_router(collections.router, prefix="/api")
+app.include_router(sequences.router, prefix="/api")
+app.include_router(themes.router, prefix="/api")
+
+
+@app.get("/api/health")
+async def health():
+    return {"status": "ok"}
