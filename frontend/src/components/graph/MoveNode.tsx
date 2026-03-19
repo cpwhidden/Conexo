@@ -11,6 +11,7 @@ interface MoveNodeData {
   };
   hasStoredPosition: boolean;
   onAddConnection?: (move: MoveNodeData["move"]) => void;
+  onExplore?: (move: MoveNodeData["move"]) => void;
   focusPosition?: "left" | "center" | "right" | null;
   onInfoClick?: (move: MoveNodeData["move"]) => void;
   // Graph analysis data
@@ -28,8 +29,11 @@ function MoveNode({ data, selected }: NodeProps) {
   const { move, focusPosition, onInfoClick, connectionStatus, componentIndex, showComponentColors } = nodeData;
 
   // Show info icon on outer edge in focus mode (always visible, not just on hover)
-  const showInfoIcon = focusPosition && onInfoClick;
+  const showFocusInfoIcon = focusPosition && onInfoClick;
   const infoIconSide = focusPosition === "left" ? "left" : "right";
+
+  // Show info icon in Core view (on hover, right side)
+  const showCoreInfoIcon = hovered && nodeData.onExplore && onInfoClick;
 
   // Build connection status CSS classes
   const connectionClasses: string[] = [];
@@ -43,19 +47,22 @@ function MoveNode({ data, selected }: NodeProps) {
     }
   }
 
-  // Build component color class (only when showComponentColors is active)
-  if (showComponentColors && componentIndex !== undefined) {
-    connectionClasses.push(`component-${componentIndex % 5}`);
-  }
+  // Component coloring for disconnected subgraph visualization
+  const componentStyle = showComponentColors && componentIndex !== undefined
+    ? { borderColor: `hsl(${(componentIndex * 137) % 360}, 60%, 50%)` }
+    : undefined;
 
-  // Compute timing label
+  // Compute timing label based on is_state
   const timingLabel = move.is_state
     ? `${move.starting_beat}`
     : `${move.starting_beat}-${move.starting_beat + move.beat_count - 1}`;
 
   return (
     <div
-      className={`graph-node ${selected ? "selected" : ""} ${move.is_state ? "state-node" : ""} ${focusPosition ? `focus-${focusPosition}` : ""} ${connectionClasses.join(" ")}`}
+      className={`graph-node ${move.is_state ? "state-node" : ""} ${selected ? "selected" : ""} ${
+        focusPosition ? `focus-${focusPosition}` : ""
+      } ${connectionClasses.join(" ")}`}
+      style={componentStyle}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -65,27 +72,30 @@ function MoveNode({ data, selected }: NodeProps) {
       <Handle type="target" position={Position.Bottom} id="target-bottom" />
       <Handle type="target" position={Position.Left} id="target-left" />
 
-      {/* Info icon for Focus mode - on outer edge */}
-      {showInfoIcon && infoIconSide === "left" && (
-        <button
-          className="graph-node-info-btn info-left"
-          title="View move details"
-          onClick={(e) => {
-            e.stopPropagation();
-            onInfoClick?.(move);
-          }}
-        >
-          ℹ
-        </button>
-      )}
-
       <div className="graph-node-content">
         <div className="graph-node-name">{move.name}</div>
         <span className="graph-node-timing">{timingLabel}</span>
       </div>
 
-      {/* Add connection button (non-focus mode, or center node in focus mode) */}
-      {hovered && nodeData.onAddConnection && (!focusPosition || focusPosition === "center") && (
+      {/* Explore button — upper left (Core view) */}
+      {hovered && nodeData.onExplore && (
+        <button
+          className="graph-node-explore-btn"
+          title="Explore connections"
+          onClick={(e) => {
+            e.stopPropagation();
+            nodeData.onExplore?.(move);
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <circle cx="6.5" cy="6.5" r="5" />
+            <line x1="10" y1="10" x2="14.5" y2="14.5" />
+          </svg>
+        </button>
+      )}
+
+      {/* Add connection button — upper right (non-focus, non-core views) */}
+      {hovered && !nodeData.onExplore && nodeData.onAddConnection && (!focusPosition || focusPosition === "center") && (
         <button
           className="graph-node-add-btn"
           title="Add connection"
@@ -98,10 +108,38 @@ function MoveNode({ data, selected }: NodeProps) {
         </button>
       )}
 
-      {/* Info icon for Focus mode - on outer edge (right side) */}
-      {showInfoIcon && infoIconSide === "right" && (
+      {/* Info icon — right side, Core view (on hover) */}
+      {showCoreInfoIcon && (
         <button
           className="graph-node-info-btn info-right"
+          title="View move details"
+          onClick={(e) => {
+            e.stopPropagation();
+            onInfoClick?.(move);
+          }}
+        >
+          ℹ
+        </button>
+      )}
+
+      {/* Info icon for Focus mode — on outer edge (always visible) */}
+      {showFocusInfoIcon && infoIconSide === "right" && (
+        <button
+          className="graph-node-info-btn info-right"
+          title="View move details"
+          onClick={(e) => {
+            e.stopPropagation();
+            onInfoClick?.(move);
+          }}
+        >
+          ℹ
+        </button>
+      )}
+
+      {/* Info icon for Focus mode — left side */}
+      {showFocusInfoIcon && infoIconSide === "left" && (
+        <button
+          className="graph-node-info-btn info-left"
           title="View move details"
           onClick={(e) => {
             e.stopPropagation();
