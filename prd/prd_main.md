@@ -1,7 +1,7 @@
 # Conexo - Product Requirements Document
 
-> **Last Updated**: 2026-03-13
-> **Version**: 1.6
+> **Last Updated**: 2026-03-19
+> **Version**: 1.7
 > **Status**: Active Development
 
 ---
@@ -12,12 +12,12 @@
 |---------|--------|-------|
 | Authentication | ✅ Implemented | Google OAuth + JWT, redirect-after-login |
 | Move Management | ✅ Implemented | Full CRUD with all fields |
-| Video Management | ✅ Implemented | Upload, playback, delete |
+| Video Management | ✅ Implemented | Upload dialog with trim, rename, drag-and-drop, playback, delete |
 | Move Connections | ✅ Implemented | Directional relationships with labels |
 | Collections | ✅ Implemented | Frontend + Backend, graph view, default collections |
 | Sequences | ✅ Implemented | Backend API complete with connection validation |
 | Themes | ✅ Implemented | Full CRUD, move grouping by theme |
-| Graph Visualization | ✅ Implemented | Multiple layouts, Focus default, timing tags, connection analysis |
+| Graph Visualization | ✅ Implemented | Multiple layouts (Focus, Dagre, Force, ELK, Ring, Core, Custom), connection highlighting, Core explore |
 
 **Legend**: ✅ Implemented | 🚧 In Progress | 🔲 Not Started
 
@@ -61,10 +61,13 @@ Full CRUD operations for dance moves with rich metadata:
 - Two move types: regular moves and states (positions/momentum)
 
 ### 2.3 Video Management
-- Upload videos to moves for visual reference
+- Upload videos to moves via drag-and-drop zone or file picker
+- Upload dialog with video preview, filename editing, and optional trim (FFmpeg.wasm, stream copy)
 - Video playback directly in the app
+- Inline video rename after upload
 - Multiple videos per move supported
 - Google Cloud Storage for video hosting
+- 0-byte file detection for macOS Photos drag failures
 
 ### 2.4 Move Connections
 - Define directional relationships between moves
@@ -160,6 +163,7 @@ Full CRUD operations for dance moves with rich metadata:
 |-------|------|---------|-------------|
 | key_egress | boolean | false | Many moves can follow this one |
 | key_ingress | boolean | false | Many moves can lead to this one |
+| is_core | boolean | false | Core move (used in Core graph view and Ring layout) |
 
 #### Notes
 | Field | Type | Constraints | Description |
@@ -594,6 +598,8 @@ Interactive node-link diagram for visualizing move connections within a collecti
 | **Force** | D3-Force | Organic "web" view, cyclic graphs, clusters |
 | **ELK Layered** | elkjs | Hierarchical with proper cycle handling |
 | **ELK Stress** | elkjs | Organic layout (deterministic) |
+| **Ring** | Custom | States in a ring, Movements radiating outward in subgraphs |
+| **Core** | D3-Force | Core moves only, distance reflects path length through intermediaries |
 | **Custom** | Manual | User-positioned nodes (persisted) |
 
 #### Node Display
@@ -621,6 +627,29 @@ Interactive node-link diagram for visualizing move connections within a collecti
 - Ascending/descending toggle
 - Click any node to re-focus on it
 - Info icon on hover for move details
+
+#### Ring Layout Features
+- States (`is_state=true`) arranged in a circle at the center
+- Movements radiate outward in subgraphs per connected State (BFS, full reachability)
+- Movements reachable from multiple States are duplicated (virtual nodes)
+- Edges from subgraph Movements to other States draw back to the ring
+- Orphan Movements (no path to any State) clustered separately below the ring
+
+#### Core Layout Features
+- Shows only `is_core=true` moves
+- Edge weight = shortest acyclic path length through non-Core intermediaries
+- D3 force simulation: link distance proportional to path weight
+- Straight edges (no elbows), no edge labels — spatial distance conveys relatedness
+- **Core Explore subview**: Magnifying glass icon on each Core node; click to see all reachable moves from that Core move, stopping at other Core moves (which become leaf nodes). Dagre hierarchical layout (LR). Back button (glass-morphism circle, SVG chevron) returns to full Core overview.
+- Core Explore subview: "+" button on non-leaf nodes for adding connections; leaf Core nodes have no "+" button
+- In Core view, clicking a node highlights incoming (blue #4A9EFF) and outgoing (orange #FF8C42) edges; detail panel opens only via the info "i" button
+
+#### Connection Highlighting (all layouts)
+- **Outgoing edges**: Orange (#FF8C42), 2.5px stroke
+- **Incoming edges**: Blue (#4A9EFF), 2.5px stroke
+- **Unrelated edges**: Dimmed to 50% opacity
+- **Directly selected edge**: Keeps existing red-pink animated style
+- **Background click**: Deselects node, clears all edge highlighting
 
 #### Search and Navigation
 - **Keyboard navigation**: Arrow keys to navigate dropdown results, Enter to select, Escape to close
@@ -706,6 +735,7 @@ prd/
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-03-19 | 1.7 | Added is_core field to Key Move Flags (3.2). Added video upload dialog with trim, rename, drag-and-drop zone, 0-byte detection (2.3, 6.3). Added video rename endpoint PATCH /videos/{id} (6.3). Added Ring layout and Core layout with Core Explore subview (9.1). Added connection highlighting: blue incoming, orange outgoing, 50% dim unrelated (9.1). Added background click to deselect (9.1). Migration: is_core column + batch update for States. |
 | 2026-03-13 | 1.6 | Added Themes feature (Section 2.7, 3.9-3.10, 5.8-5.9, 6.7, 8.5). Added Yoga dance style. Documented redirect-after-login (2.1, 5.1). Updated Collections: graph as default view, batch graph-data endpoint, list view route (2.5, 5.6, 5.7, 6.5). Updated Graph: Focus as default layout, auto-select, upside-down V pattern, timing tags, full title on selected nodes, keyboard navigation, paginated search, Edit Move panel follows selection (9.1). Added leader_styling to Move Notes (3.2). Added is_default/date_last_opened to Collection entity (3.5). Added graph libraries to tech stack (7.2). Added ensure-defaults/sync-defaults endpoints (6.5). |
 | 2026-02-12 | 1.5 | Added Graph Visualization documentation (Section 9): layouts (Dagre, Force, ELK, Focus, Custom), connection indicators, disconnected subgraph detection, Add Connection panel. Updated Collections with frontend features, default collections, position persistence. Added UI pages 5.5-5.7 for collections and graph. |
 | 2026-02-08 | 1.4 | Added learning_notes field to Move Notes section |
