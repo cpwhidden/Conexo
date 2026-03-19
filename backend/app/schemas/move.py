@@ -21,6 +21,7 @@ class MoveCreate(BaseModel):
     is_state: bool = False
     key_egress: bool = False
     key_ingress: bool = False
+    is_core: bool = False
     leadability: int | None = Field(default=None, ge=0, le=10)
     mental_availability: int | None = Field(default=None, ge=0, le=10)
     beat_energy: int | None = Field(default=None, ge=0, le=10)
@@ -54,6 +55,7 @@ class MoveUpdate(BaseModel):
     is_state: bool | None = None
     key_egress: bool | None = None
     key_ingress: bool | None = None
+    is_core: bool | None = None
     leadability: int | None = Field(default=None, ge=0, le=10)
     mental_availability: int | None = Field(default=None, ge=0, le=10)
     beat_energy: int | None = Field(default=None, ge=0, le=10)
@@ -79,6 +81,7 @@ class MoveResponse(BaseModel):
     is_state: bool
     key_egress: bool
     key_ingress: bool
+    is_core: bool
     leadability: int | None
     mental_availability: int | None
     beat_energy: int | None

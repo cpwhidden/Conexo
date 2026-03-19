@@ -29,6 +29,7 @@ export default function EditMovePanel({
     is_state: move.is_state,
     key_egress: move.key_egress,
     key_ingress: move.key_ingress,
+    is_core: move.is_core,
     leadability: move.leadability,
     mental_availability: move.mental_availability,
     beat_energy: move.beat_energy,
@@ -162,6 +163,7 @@ export default function EditMovePanel({
       is_state: move.is_state,
       key_egress: move.key_egress,
       key_ingress: move.key_ingress,
+      is_core: move.is_core,
       leadability: move.leadability,
       mental_availability: move.mental_availability,
       beat_energy: move.beat_energy,
@@ -414,6 +416,16 @@ export default function EditMovePanel({
                 }
               />
               Key Ingress (many preceding moves)
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={form.is_core || false}
+                onChange={(e) =>
+                  setForm({ ...form, is_core: e.target.checked })
+                }
+              />
+              Core Move
             </label>
           </div>
 

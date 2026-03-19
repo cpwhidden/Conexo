@@ -102,6 +102,9 @@ class Move(Base):
     key_ingress: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
     )
+    is_core: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
 
     # Optional scores (0-10)
     leadability: Mapped[int | None] = mapped_column(nullable=True)

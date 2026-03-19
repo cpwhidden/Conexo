@@ -47,6 +47,12 @@ export default function MoveDetailPage() {
     setVideos((prev) => prev.filter((v) => v.id !== videoId));
   }, []);
 
+  const handleVideoRenamed = useCallback((videoId: string, newFilename: string) => {
+    setVideos((prev) =>
+      prev.map((v) => (v.id === videoId ? { ...v, filename: newFilename } : v))
+    );
+  }, []);
+
   const handleDelete = async () => {
     if (!confirm("Delete this move? This cannot be undone.")) return;
     await client.delete(`/moves/${moveId}`);
@@ -237,8 +243,9 @@ export default function MoveDetailPage() {
       </div>
 
       {/* Key move badges */}
-      {(move.key_egress || move.key_ingress) && (
+      {(move.key_egress || move.key_ingress || move.is_core) && (
         <div className="move-badges">
+          {move.is_core && <span className="badge">Core</span>}
           {move.key_egress && <span className="badge">Key Egress</span>}
           {move.key_ingress && <span className="badge">Key Ingress</span>}
         </div>
@@ -344,6 +351,7 @@ export default function MoveDetailPage() {
               key={video.id}
               video={video}
               onDelete={handleVideoDeleted}
+              onRenamed={handleVideoRenamed}
             />
           ))}
         </div>

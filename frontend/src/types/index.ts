@@ -31,6 +31,7 @@ export interface Move {
   is_state: boolean;
   key_egress: boolean;
   key_ingress: boolean;
+  is_core: boolean;
   leadability: number | null;
   mental_availability: number | null;
   beat_energy: number | null;
@@ -57,6 +58,7 @@ export interface MoveCreate {
   is_state?: boolean;
   key_egress?: boolean;
   key_ingress?: boolean;
+  is_core?: boolean;
   leadability?: number | null;
   mental_availability?: number | null;
   beat_energy?: number | null;
@@ -81,6 +83,7 @@ export interface MoveUpdate {
   is_state?: boolean;
   key_egress?: boolean;
   key_ingress?: boolean;
+  is_core?: boolean;
   leadability?: number | null;
   mental_availability?: number | null;
   beat_energy?: number | null;

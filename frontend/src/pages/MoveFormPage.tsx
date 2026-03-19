@@ -21,6 +21,7 @@ export default function MoveFormPage() {
     is_state: false,
     key_egress: false,
     key_ingress: false,
+    is_core: false,
     leadability: null,
     mental_availability: null,
     beat_energy: null,
@@ -51,6 +52,7 @@ export default function MoveFormPage() {
         is_state: m.is_state,
         key_egress: m.key_egress,
         key_ingress: m.key_ingress,
+        is_core: m.is_core,
         leadability: m.leadability,
         mental_availability: m.mental_availability,
         beat_energy: m.beat_energy,
@@ -313,6 +315,16 @@ export default function MoveFormPage() {
               }
             />
             Key Ingress (many preceding moves)
+          </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={form.is_core || false}
+              onChange={(e) =>
+                setForm({ ...form, is_core: e.target.checked })
+              }
+            />
+            Core Move
           </label>
         </div>
 
