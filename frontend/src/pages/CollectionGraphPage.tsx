@@ -2100,6 +2100,17 @@ export default function CollectionGraphPage() {
         <span className="node-count">{moves.length} moves</span>
       </div>
       <div className="graph-container">
+        {/* Empty state warnings */}
+        {moves.length === 0 && (
+          <div className="graph-empty-state">
+            Add moves to this collection to use the graph view.
+          </div>
+        )}
+        {layout === "core" && moves.length > 0 && !moves.some((m) => m.is_core) && (
+          <div className="graph-empty-state">
+            No Core moves in this collection. Mark moves as Core in the Edit Move panel to use the Core graph view.
+          </div>
+        )}
         {layout === "core" && coreExploreId && (
           <button
             className="core-back-btn"

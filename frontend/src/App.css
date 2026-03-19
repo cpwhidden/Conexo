@@ -1490,6 +1490,12 @@ select optgroup {
   color: #e94560;
   text-decoration: none;
   font-weight: 500;
+  margin-top: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .graph-header .back-link:hover {
@@ -1501,10 +1507,11 @@ select optgroup {
   background: #2a2a3e;
   border-radius: 6px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .layout-btn {
-  padding: 0.4rem 1rem;
+  padding: 0.4rem 0.7rem;
   background: transparent;
   border: none;
   text-decoration: none;
@@ -1616,6 +1623,19 @@ select optgroup {
   flex: 1;
   background: #121218;
   position: relative;
+}
+
+.graph-empty-state {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  color: #888;
+  font-size: 0.95rem;
+  text-align: center;
+  max-width: 360px;
+  line-height: 1.5;
 }
 
 /* Graph nodes */
