@@ -15,5 +15,9 @@ class VideoResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class VideoUpdate(BaseModel):
+    filename: str
+
+
 class VideoURLResponse(BaseModel):
     url: str

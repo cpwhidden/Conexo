@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "^2.0.4",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@react-oauth/google": "^0.13.4",
     "@types/d3-force": "^3.0.10",
     "@xyflow/react": "^12.10.0",

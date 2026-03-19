@@ -9,7 +9,7 @@ from app.api.routes.moves import _get_user_move
 from app.core.database import get_db
 from app.models.user import User
 from app.models.video import MoveVideo
-from app.schemas.video import VideoResponse, VideoURLResponse
+from app.schemas.video import VideoResponse, VideoUpdate, VideoURLResponse
 from app.services import storage
 
 router = APIRouter(tags=["videos"])
@@ -68,6 +68,19 @@ async def get_video_url(
     video = await _get_user_video(db, video_id, current_user.id)
     url = storage.generate_signed_url(video.gcs_key)
     return VideoURLResponse(url=url)
+
+
+@router.patch("/videos/{video_id}", response_model=VideoResponse)
+async def update_video(
+    video_id: uuid.UUID,
+    data: VideoUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    video = await _get_user_video(db, video_id, current_user.id)
+    video.filename = data.filename
+    await db.flush()
+    return VideoResponse.model_validate(video)
 
 
 @router.delete("/videos/{video_id}", status_code=status.HTTP_204_NO_CONTENT)
