@@ -18,12 +18,13 @@ import dagre from "@dagrejs/dagre";
 import "@xyflow/react/dist/style.css";
 
 import client from "../api/client";
-import type { CollectionWithMoves, Connection, Move } from "../types";
+import type { CollectionWithMoves, Connection, Move, MoveGraphData } from "../types";
 import MoveNode from "../components/graph/MoveNode";
 import MoveDetailPanel from "../components/graph/MoveDetailPanel";
 import AddConnectionPanel, { type ConnectionPreview } from "../components/graph/AddConnectionPanel";
 import ConnectionEditPanel from "../components/graph/ConnectionEditPanel";
 import EditMovePanel from "../components/graph/EditMovePanel";
+import AdvancedSearchPanel from "../components/graph/AdvancedSearchPanel";
 import ConfirmModal from "../components/ConfirmModal";
 import CurvedEdge from "../components/graph/CurvedEdge";
 import AnimatedCurvedEdge from "../components/graph/AnimatedCurvedEdge";
@@ -1137,11 +1138,21 @@ export default function CollectionGraphPage() {
   const [collection, setCollection] = useState<CollectionWithMoves | null>(
     null
   );
-  const [moves, setMoves] = useState<Move[]>([]);
+  const [moves, setMoves] = useState<MoveGraphData[]>([]);
   const [allDanceStyleMoves, setAllDanceStyleMoves] = useState<Move[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
-  const [layout, setLayout] = useState<"dagre" | "custom" | "focus" | "force" | "elk" | "ring" | "core">("focus");
+
+  // Read initial layout and node from URL (once, on mount)
+  const initialParams = useRef(new URLSearchParams(window.location.search));
+  const [layout, setLayout] = useState<"dagre" | "custom" | "focus" | "force" | "elk" | "ring" | "core">(() => {
+    const urlLayout = initialParams.current.get("layout");
+    const validLayouts = ["dagre", "custom", "focus", "force", "elk", "ring", "core"] as const;
+    if (urlLayout && (validLayouts as readonly string[]).includes(urlLayout)) {
+      return urlLayout as typeof validLayouts[number];
+    }
+    return "focus";
+  });
   const [elkAlgorithm, setElkAlgorithm] = useState<ELKAlgorithm>("layered");
 
   // Focus mode state
@@ -1149,11 +1160,17 @@ export default function CollectionGraphPage() {
   const [focusSortBy, setFocusSortBy] = useState<string>("difficulty");
   const [focusSortAsc, setFocusSortAsc] = useState(true);
 
-  // Auto-select a random node when focus layout opens with no focused node
+  // Auto-select node when focus layout opens with no focused node
+  // Prefer URL param, fall back to random
   useEffect(() => {
     if (layout === "focus" && !focusedMoveId && moves.length > 0) {
-      const randomIndex = Math.floor(Math.random() * moves.length);
-      setFocusedMoveId(moves[randomIndex].id);
+      const urlNode = initialParams.current.get("node");
+      if (urlNode && moves.some((m) => m.id === urlNode)) {
+        setFocusedMoveId(urlNode);
+      } else {
+        const randomIndex = Math.floor(Math.random() * moves.length);
+        setFocusedMoveId(moves[randomIndex].id);
+      }
     }
   }, [layout, focusedMoveId, moves]);
   const [focusLevel, setFocusLevel] = useState(1);
@@ -1164,6 +1181,9 @@ export default function CollectionGraphPage() {
   // Core detail: tracks whether the detail panel was opened via the info button (not node click)
   const [coreShowDetail, setCoreShowDetail] = useState(false);
 
+  // Focus preview state
+  const [showPreview, setShowPreview] = useState(false);
+
   // Panel state
   const [selectedMove, setSelectedMove] = useState<Move | null>(null);
   const [addConnectionMove, setAddConnectionMove] = useState<Move | null>(null);
@@ -1173,6 +1193,19 @@ export default function CollectionGraphPage() {
   const [deleteConfirmMove, setDeleteConfirmMove] = useState<Move | null>(null);
   const [connectionPreview, setConnectionPreview] = useState<ConnectionPreview | null>(null);
 
+  // Sync selected node and layout to URL (via replaceState, no React re-renders)
+  useEffect(() => {
+    const nodeId = layout === "focus" ? focusedMoveId : selectedMove?.id;
+    const params = new URLSearchParams();
+    if (nodeId) params.set("node", nodeId);
+    if (layout !== "focus") params.set("layout", layout);
+    const newSearch = params.toString();
+    const newUrl = newSearch ? `${window.location.pathname}?${newSearch}` : window.location.pathname;
+    if (window.location.search !== (newSearch ? `?${newSearch}` : "")) {
+      window.history.replaceState(null, "", newUrl);
+    }
+  }, [selectedMove?.id, focusedMoveId, layout]);
+
   // Graph analysis state - toggle for showing component colors
   const [showComponentColors, setShowComponentColors] = useState(false);
 
@@ -1181,6 +1214,7 @@ export default function CollectionGraphPage() {
   const [graphSearchOpen, setGraphSearchOpen] = useState(false);
   const [graphSearchLimit, setGraphSearchLimit] = useState(20);
   const graphSearchRef = useRef<HTMLDivElement>(null);
+  const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
 
   // Handle panel close with animation
   const handlePanelClose = useCallback(() => {
@@ -1276,6 +1310,18 @@ export default function CollectionGraphPage() {
     loadGraphData();
   }, [loadGraphData]);
 
+  // Restore selected node from URL param after data loads (for non-focus layouts)
+  const restoredFromUrl = useRef(false);
+  useEffect(() => {
+    if (restoredFromUrl.current || moves.length === 0) return;
+    restoredFromUrl.current = true;
+    const urlNode = initialParams.current.get("node");
+    if (urlNode && layout !== "focus") {
+      const move = moves.find((m) => m.id === urlNode);
+      if (move) setSelectedMove(move);
+    }
+  }, [moves, layout]);
+
   // Fetch ALL moves of this dance style (for Add Connection panel)
   useEffect(() => {
     if (!collection) return;
@@ -1310,6 +1356,7 @@ export default function CollectionGraphPage() {
         data: {
           move: move || { id: cm.move_id, name: cm.move_name, is_state: false },
           hasStoredPosition: cm.position_x !== null && cm.position_y !== null,
+          showPreview,
           onAddConnection: (moveData: Move) => {
             setAddConnectionMove(moveData);
             setEditingMove(null);
@@ -1348,7 +1395,7 @@ export default function CollectionGraphPage() {
       });
 
     return { initialNodes: flowNodes, initialEdges: flowEdges };
-  }, [collection, moves, connections]);
+  }, [collection, moves, connections, showPreview]);
 
   // Analyze graph structure for connected components and node degrees
   const graphAnalysis = useMemo(() => {
@@ -1846,6 +1893,7 @@ export default function CollectionGraphPage() {
       await client.delete(`/moves/${moveId}`);
       // Remove from local state immediately for responsiveness
       setMoves((prev) => prev.filter((m) => m.id !== moveId));
+      setAllDanceStyleMoves((prev) => prev.filter((m) => m.id !== moveId));
       setConnections((prev) =>
         prev.filter((c) => c.source_move_id !== moveId && c.target_move_id !== moveId)
       );
@@ -1930,62 +1978,35 @@ export default function CollectionGraphPage() {
         <Link to={`/collections/${id}/moves`} className="back-link">
           &larr; {collection.name}
         </Link>
-        <div className="layout-selector">
-          <button
-            className={`layout-btn ${layout === "dagre" ? "active" : ""}`}
-            onClick={() => switchToLayout("dagre")}
-          >
-            Dagre
-          </button>
-          <button
-            className={`layout-btn ${layout === "force" ? "active" : ""}`}
-            onClick={() => switchToLayout("force")}
-          >
-            Force
-          </button>
-          <button
-            className={`layout-btn ${layout === "elk" ? "active" : ""}`}
-            onClick={() => switchToLayout("elk")}
-          >
-            ELK
-          </button>
-          <button
-            className={`layout-btn ${layout === "focus" ? "active" : ""}`}
-            onClick={() => {
+        <select
+          className="layout-dropdown"
+          value={layout}
+          onChange={(e) => {
+            const newLayout = e.target.value as typeof layout;
+            if (newLayout === "focus") {
               setLayout("focus");
-              // Use currently selected move as focus target, fall back to first move
               if (selectedMove) {
                 setFocusedMoveId(selectedMove.id);
               } else if (!focusedMoveId && moves.length > 0) {
                 setFocusedMoveId(moves[0].id);
               }
               setSelectedMove(null);
-            }}
-          >
-            Focus
-          </button>
-          <button
-            className={`layout-btn ${layout === "ring" ? "active" : ""}`}
-            onClick={() => switchToLayout("ring")}
-          >
-            Ring
-          </button>
-          <button
-            className={`layout-btn ${layout === "core" ? "active" : ""}`}
-            onClick={() => {
+            } else if (newLayout === "core") {
               setCoreExploreId(null);
               switchToLayout("core");
-            }}
-          >
-            Core
-          </button>
-          <button
-            className={`layout-btn ${layout === "custom" ? "active" : ""}`}
-            onClick={() => switchToLayout("custom")}
-          >
-            Custom
-          </button>
-        </div>
+            } else {
+              switchToLayout(newLayout);
+            }
+          }}
+        >
+          <option value="focus">Focus</option>
+          <option value="core">Core</option>
+          <option value="custom">Custom</option>
+          <option value="ring">Ring</option>
+          <option value="dagre">Dagre</option>
+          <option value="force">Force</option>
+          <option value="elk">ELK</option>
+        </select>
 
         {/* Graph move search */}
         <div className="graph-search" ref={graphSearchRef}>
@@ -2027,6 +2048,23 @@ export default function CollectionGraphPage() {
             </div>
           )}
         </div>
+
+        <button
+          className={`btn-icon adv-search-toggle ${advancedSearchOpen ? "active" : ""}`}
+          onClick={() => setAdvancedSearchOpen(!advancedSearchOpen)}
+          title="Advanced Search"
+        >
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="8" cy="8" r="6" />
+            <line x1="13" y1="13" x2="18" y2="18" />
+            <line x1="5" y1="8" x2="11" y2="8" />
+            <line x1="8" y1="5" x2="8" y2="11" />
+          </svg>
+        </button>
+
+        <Link to={`/collections/${id}/learn`} className="btn btn-secondary btn-small">
+          Learn
+        </Link>
 
         {/* ELK algorithm sub-selector */}
         {layout === "elk" && (
@@ -2083,6 +2121,14 @@ export default function CollectionGraphPage() {
             >
               {focusSortAsc ? "↑" : "↓"}
             </button>
+            <label className="preview-toggle">
+              <input
+                type="checkbox"
+                checked={showPreview}
+                onChange={(e) => setShowPreview(e.target.checked)}
+              />
+              Preview
+            </label>
           </div>
         )}
 
@@ -2196,6 +2242,33 @@ export default function CollectionGraphPage() {
               />
             )}
           </div>
+        )}
+
+        {/* Advanced Search Panel */}
+        {advancedSearchOpen && (
+          <AdvancedSearchPanel
+            moves={moves}
+            onSelectMove={(move) => {
+              setAdvancedSearchOpen(false);
+              if (layout === "focus") {
+                setFocusedMoveId(move.id);
+              } else {
+                setSelectedMove(move);
+                // Pan to the selected node
+                const node = nodes.find(
+                  (n) => n.id === move.id || virtualToRealIdMap.get(n.id) === move.id
+                );
+                if (node && node.position && reactFlowInstance.current) {
+                  reactFlowInstance.current.setCenter(
+                    node.position.x + 80,
+                    node.position.y + 20,
+                    { zoom: 1.2, duration: 300 }
+                  );
+                }
+              }
+            }}
+            onClose={() => setAdvancedSearchOpen(false)}
+          />
         )}
 
         {/* Delete Move Confirmation Modal */}
