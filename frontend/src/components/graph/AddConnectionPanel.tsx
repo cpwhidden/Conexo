@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import type { Connection, Move, MoveCreate, DanceStyle, Theme } from "../../types";
+import type { Connection, Move, MoveCreate, DanceStyle, Theme, Cue } from "../../types";
+import CuesSection from "../CuesSection";
 import client from "../../api/client";
 import { multiTermMatch, highlightTerms } from "../../utils/search";
 import { useDropdownKeyNav } from "../../hooks/useDropdownKeyNav";
@@ -60,6 +61,7 @@ export default function AddConnectionPanel({
     is_state: false,
     key_egress: false,
     key_ingress: false,
+    is_core: false,
     leadability: null,
     mental_availability: null,
     beat_energy: null,
@@ -73,6 +75,9 @@ export default function AddConnectionPanel({
   });
   const [tagInput, setTagInput] = useState("");
   const [creatingMove, setCreatingMove] = useState(false);
+
+  // Cues state for new move form
+  const [newMoveCues, setNewMoveCues] = useState<Cue[]>([]);
 
   // Theme state for new move form
   const [availableThemes, setAvailableThemes] = useState<Theme[]>([]);
@@ -191,29 +196,28 @@ export default function AddConnectionPanel({
     }
   };
 
-  // Filter moves based on direction and existing connections
-  const filteredMoves = useMemo(() => {
-    // Get IDs of moves already connected in this direction
-    const connectedIds = new Set(
-      existingConnections
-        .filter((c) =>
-          direction === "to"
-            ? c.source_move_id === sourceMove.id
-            : c.target_move_id === sourceMove.id
-        )
-        .map((c) =>
-          direction === "to" ? c.target_move_id : c.source_move_id
-        )
-    );
+  // Get IDs of moves already connected in this direction
+  const connectedIds = useMemo(() => new Set(
+    existingConnections
+      .filter((c) =>
+        direction === "to"
+          ? c.source_move_id === sourceMove.id
+          : c.target_move_id === sourceMove.id
+      )
+      .map((c) =>
+        direction === "to" ? c.target_move_id : c.source_move_id
+      )
+  ), [existingConnections, sourceMove.id, direction]);
 
-    // Filter ALL moves of this dance style: not self, not already connected, matches search
-    return allDanceStyleMoves.filter(
-      (m) =>
-        m.id !== sourceMove.id &&
-        !connectedIds.has(m.id) &&
-        multiTermMatch(m.name, searchQuery)
+  // Filter moves: unconnected first, already-connected at the bottom
+  const filteredMoves = useMemo(() => {
+    const matching = allDanceStyleMoves.filter(
+      (m) => m.id !== sourceMove.id && multiTermMatch(m.name, searchQuery)
     );
-  }, [allDanceStyleMoves, existingConnections, sourceMove.id, direction, searchQuery]);
+    const unconnected = matching.filter((m) => !connectedIds.has(m.id));
+    const connected = matching.filter((m) => connectedIds.has(m.id));
+    return [...unconnected, ...connected];
+  }, [allDanceStyleMoves, connectedIds, sourceMove.id, searchQuery]);
 
   // Move search keyboard navigation
   const visibleMoves = filteredMoves.slice(0, searchLimit);
@@ -306,6 +310,16 @@ export default function AddConnectionPanel({
         await client.post(`/themes/${theme.id}/moves`, { move_id: newMoveId });
       }
 
+      // Create cues for the new move
+      for (const cue of newMoveCues) {
+        await client.post(`/moves/${newMoveId}/cues`, {
+          beat: cue.beat,
+          person: cue.person,
+          body_part: cue.body_part,
+          description: cue.description,
+        });
+      }
+
       // Add to collection
       await onAddMoveToCollection(newMoveId);
 
@@ -326,6 +340,7 @@ export default function AddConnectionPanel({
         is_state: false,
         key_egress: false,
         key_ingress: false,
+        is_core: false,
         leadability: null,
         mental_availability: null,
         beat_energy: null,
@@ -338,6 +353,7 @@ export default function AddConnectionPanel({
         learning_notes: null,
       });
       setSelectedThemes([]);
+      setNewMoveCues([]);
     } finally {
       setCreatingMove(false);
     }
@@ -361,6 +377,11 @@ export default function AddConnectionPanel({
             onChange={(e) =>
               setNewMoveForm({ ...newMoveForm, [field]: parseInt(e.target.value) })
             }
+            onPointerDown={() => {
+              if (value === null || value === undefined) {
+                setNewMoveForm({ ...newMoveForm, [field]: 5 });
+              }
+            }}
           />
           <span className="range-value">{value ?? "—"}</span>
           {value !== null && value !== undefined ? (
@@ -426,6 +447,14 @@ export default function AddConnectionPanel({
               rows={2}
             />
           </label>
+
+          {/* Cues */}
+          <CuesSection
+            cues={newMoveCues}
+            onCuesChange={setNewMoveCues}
+            localMode
+            defaultExpanded={false}
+          />
 
           {/* Timing */}
           <div className="form-section">
@@ -560,11 +589,21 @@ export default function AddConnectionPanel({
               />
               Key Ingress (many preceding moves)
             </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={newMoveForm.is_core || false}
+                onChange={(e) =>
+                  setNewMoveForm({ ...newMoveForm, is_core: e.target.checked })
+                }
+              />
+              Core Move
+            </label>
           </div>
 
-          {/* Notes */}
+          {/* Styling */}
           <div className="form-section">
-            <div className="form-section-title">Notes</div>
+            <div className="form-section-title">Styling</div>
             <label>
               Follower Styling
               <textarea
@@ -580,6 +619,37 @@ export default function AddConnectionPanel({
                 {(newMoveForm.follower_styling || "").length}/300
               </span>
             </label>
+          </div>
+
+          {/* Learning */}
+          <div className="form-section">
+            <div className="form-section-title">Learning</div>
+            <div className="date-input-row">
+              <span className="date-label">Date Learned</span>
+              <div className="date-input-wrapper">
+                <input
+                  type="date"
+                  value={newMoveForm.date_learned || ""}
+                  onChange={(e) =>
+                    setNewMoveForm({ ...newMoveForm, date_learned: e.target.value || null })
+                  }
+                  className={newMoveForm.date_learned ? "" : "date-empty"}
+                />
+                {!newMoveForm.date_learned && (
+                  <span className="date-placeholder">--/--/----</span>
+                )}
+              </div>
+              {newMoveForm.date_learned && (
+                <button
+                  type="button"
+                  className="btn-icon btn-clear-date"
+                  onClick={() => setNewMoveForm({ ...newMoveForm, date_learned: null })}
+                  title="Clear date"
+                >
+                  &times;
+                </button>
+              )}
+            </div>
             <label>
               Learning Notes
               <textarea
@@ -797,21 +867,27 @@ export default function AddConnectionPanel({
                     {filteredMoves.length === 0 ? (
                       <div className="option disabled">No moves found</div>
                     ) : (
-                      visibleMoves.map((move, idx) => (
-                        <div
-                          key={move.id}
-                          className={`option ${idx === moveSearchIndex ? "highlighted" : ""}`}
-                          onClick={() => {
-                            setTargetMoveId(move.id);
-                            setSearchQuery("");
-                          }}
-                        >
-                          <span>{highlightTerms(move.name, searchQuery)}</span>
-                          {!isInCollection(move.id) && (
-                            <span className="add-to-collection-badge">Add to Collection</span>
-                          )}
-                        </div>
-                      ))
+                      visibleMoves.map((move, idx) => {
+                        const alreadyConnected = connectedIds.has(move.id);
+                        return (
+                          <div
+                            key={move.id}
+                            className={`option ${idx === moveSearchIndex ? "highlighted" : ""} ${alreadyConnected ? "disabled" : ""}`}
+                            onClick={() => {
+                              if (alreadyConnected) return;
+                              setTargetMoveId(move.id);
+                              setSearchQuery("");
+                            }}
+                          >
+                            <span>{highlightTerms(move.name, searchQuery)}</span>
+                            {alreadyConnected ? (
+                              <span className="already-connected-badge">Connected</span>
+                            ) : !isInCollection(move.id) ? (
+                              <span className="add-to-collection-badge">Add to Collection</span>
+                            ) : null}
+                          </div>
+                        );
+                      })
                     )}
                     {filteredMoves.length > searchLimit && (
                       <div

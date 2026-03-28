@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import client from "../api/client";
+import CuesSection from "../components/CuesSection";
 import { DANCE_STYLES } from "../types";
-import type { DanceStyle, MoveCreate } from "../types";
+import type { Cue, DanceStyle, MoveCreate } from "../types";
 
 export default function MoveFormPage() {
   const { moveId } = useParams();
@@ -31,13 +32,16 @@ export default function MoveFormPage() {
     learning_priority: null,
     leader_styling: null,
     follower_styling: null,
+    date_learned: null,
     learning_notes: null,
   });
   const [tagInput, setTagInput] = useState("");
+  const [cues, setCues] = useState<Cue[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!moveId) return;
+    client.get(`/moves/${moveId}/cues`).then((res) => setCues(res.data));
     client.get(`/moves/${moveId}`).then((res) => {
       const m = res.data;
       setForm({
@@ -62,6 +66,7 @@ export default function MoveFormPage() {
         learning_priority: m.learning_priority,
         leader_styling: m.leader_styling,
         follower_styling: m.follower_styling,
+        date_learned: m.date_learned,
         learning_notes: m.learning_notes,
       });
     });
@@ -91,6 +96,15 @@ export default function MoveFormPage() {
         navigate(`/moves/${moveId}`);
       } else {
         const res = await client.post("/moves", payload);
+        // Bulk-create cues for new move
+        for (const cue of cues) {
+          await client.post(`/moves/${res.data.id}/cues`, {
+            beat: cue.beat,
+            person: cue.person,
+            body_part: cue.body_part,
+            description: cue.description,
+          });
+        }
         navigate(`/moves/${res.data.id}`);
       }
     } finally {
@@ -127,6 +141,11 @@ export default function MoveFormPage() {
             onChange={(e) =>
               setForm({ ...form, [field]: parseInt(e.target.value) })
             }
+            onPointerDown={() => {
+              if (value === null || value === undefined) {
+                setForm({ ...form, [field]: 5 });
+              }
+            }}
           />
           <span className="range-value">{value ?? "—"}</span>
           {value !== null && value !== undefined ? (
@@ -168,6 +187,14 @@ export default function MoveFormPage() {
             rows={3}
           />
         </label>
+
+        <CuesSection
+          moveId={moveId}
+          cues={cues}
+          onCuesChange={setCues}
+          localMode={!isEditing}
+        />
+
         <label>
           Dance Style *
           {isEditing ? (
@@ -363,9 +390,35 @@ export default function MoveFormPage() {
           </label>
         </div>
 
-        {/* Learning Notes */}
+        {/* Learning */}
         <div className="form-section">
-          <div className="form-section-title">Notes</div>
+          <div className="form-section-title">Learning</div>
+          <div className="date-input-row">
+            <span className="date-label">Date Learned</span>
+            <div className="date-input-wrapper">
+              <input
+                type="date"
+                value={form.date_learned || ""}
+                onChange={(e) =>
+                  setForm({ ...form, date_learned: e.target.value || null })
+                }
+                className={form.date_learned ? "" : "date-empty"}
+              />
+              {!form.date_learned && (
+                <span className="date-placeholder">--/--/----</span>
+              )}
+            </div>
+            {form.date_learned && (
+              <button
+                type="button"
+                className="btn-icon btn-clear-date"
+                onClick={() => setForm({ ...form, date_learned: null })}
+                title="Clear date"
+              >
+                &times;
+              </button>
+            )}
+          </div>
           <label>
             Learning Notes
             <textarea

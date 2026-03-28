@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
-import type { Move, MoveUpdate, DanceStyle, Theme } from "../../types";
+import type { Move, MoveUpdate, DanceStyle, Theme, Cue } from "../../types";
 import client from "../../api/client";
+import CuesSection from "../CuesSection";
 import { useDropdownKeyNav } from "../../hooks/useDropdownKeyNav";
 
 interface EditMovePanelProps {
@@ -39,10 +40,15 @@ export default function EditMovePanel({
     learning_priority: move.learning_priority,
     leader_styling: move.leader_styling,
     follower_styling: move.follower_styling,
+    date_learned: move.date_learned,
     learning_notes: move.learning_notes,
   });
   const [tagInput, setTagInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+
+  // Cues state
+  const [cues, setCues] = useState<Cue[]>([]);
 
   // Theme state
   const [themes, setThemes] = useState<Theme[]>([]);
@@ -53,8 +59,22 @@ export default function EditMovePanel({
   const [pendingThemeName, setPendingThemeName] = useState("");
   const themeInputRef = useRef<HTMLInputElement>(null);
 
-  // Load themes
+  // Cmd/Ctrl+Enter to save
+  const formRef = useRef<HTMLFormElement>(null);
   useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        formRef.current?.requestSubmit();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  // Load cues and themes
+  useEffect(() => {
+    client.get(`/moves/${move.id}/cues`).then((res) => setCues(res.data));
     client.get(`/themes/by-move/${move.id}`).then((res) => setMoveThemes(res.data));
     client
       .get(`/themes?dance_style=${encodeURIComponent(move.dance_style)}`)
@@ -173,6 +193,7 @@ export default function EditMovePanel({
       learning_priority: move.learning_priority,
       leader_styling: move.leader_styling,
       follower_styling: move.follower_styling,
+      date_learned: move.date_learned,
       learning_notes: move.learning_notes,
     });
   }, [move]);
@@ -185,6 +206,64 @@ export default function EditMovePanel({
     }
   };
 
+  // Check if form has unsaved changes
+  const isDirty = useCallback(() => {
+    return (
+      form.name !== move.name ||
+      (form.description || "") !== (move.description || "") ||
+      form.beat_count !== move.beat_count ||
+      form.difficulty !== move.difficulty ||
+      form.familiarity !== move.familiarity ||
+      form.starting_beat !== move.starting_beat ||
+      form.is_state !== move.is_state ||
+      form.key_egress !== move.key_egress ||
+      form.key_ingress !== move.key_ingress ||
+      form.is_core !== move.is_core ||
+      form.leadability !== move.leadability ||
+      form.mental_availability !== move.mental_availability ||
+      form.beat_energy !== move.beat_energy ||
+      form.moderna_energy !== move.moderna_energy ||
+      form.sensual_energy !== move.sensual_energy ||
+      form.impact !== move.impact ||
+      form.learning_priority !== move.learning_priority ||
+      (form.leader_styling || "") !== (move.leader_styling || "") ||
+      (form.follower_styling || "") !== (move.follower_styling || "") ||
+      (form.date_learned || "") !== (move.date_learned || "") ||
+      (form.learning_notes || "") !== (move.learning_notes || "") ||
+      JSON.stringify(form.tags) !== JSON.stringify(move.tags)
+    );
+  }, [form, move]);
+
+  const handleClose = useCallback(() => {
+    if (isDirty()) {
+      setShowUnsavedModal(true);
+    } else {
+      onClose();
+    }
+  }, [isDirty, onClose]);
+
+  const handleSaveAndClose = useCallback(async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        description: form.description || null,
+        leader_styling: form.leader_styling || null,
+        follower_styling: form.follower_styling || null,
+        date_learned: form.date_learned || null,
+        learning_notes: form.learning_notes || null,
+      };
+      const res = await client.put(`/moves/${move.id}`, payload);
+      onSave(res.data);
+      onClose();
+    } catch (err) {
+      console.error("Failed to save move:", err);
+    } finally {
+      setSaving(false);
+      setShowUnsavedModal(false);
+    }
+  }, [form, move.id, onSave, onClose]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -194,6 +273,7 @@ export default function EditMovePanel({
         description: form.description || null,
         leader_styling: form.leader_styling || null,
         follower_styling: form.follower_styling || null,
+        date_learned: form.date_learned || null,
         learning_notes: form.learning_notes || null,
       };
       const res = await client.put(`/moves/${move.id}`, payload);
@@ -235,6 +315,11 @@ export default function EditMovePanel({
             onChange={(e) =>
               setForm({ ...form, [field]: parseInt(e.target.value) })
             }
+            onPointerDown={() => {
+              if (value === null || value === undefined) {
+                setForm({ ...form, [field]: 5 });
+              }
+            }}
           />
           <span className="range-value">{value ?? "—"}</span>
           {value !== null && value !== undefined ? (
@@ -258,13 +343,13 @@ export default function EditMovePanel({
     <div className={`slide-panel edit-move-panel ${closing ? "closing" : ""}`}>
       <div className="slide-panel-header">
         <h3>Edit Move</h3>
-        <button className="btn-icon" onClick={onClose} title="Close">
+        <button className="btn-icon" onClick={handleClose} title="Close">
           &times;
         </button>
       </div>
 
       <div className="slide-panel-content">
-        <form onSubmit={handleSubmit} className="edit-move-form">
+        <form ref={formRef} onSubmit={handleSubmit} className="edit-move-form">
           {/* Core Identity */}
           <label>
             Name *
@@ -284,6 +369,8 @@ export default function EditMovePanel({
               rows={2}
             />
           </label>
+
+          <CuesSection moveId={move.id} cues={cues} onCuesChange={setCues} />
 
           <label>
             Dance Style
@@ -557,9 +644,35 @@ export default function EditMovePanel({
             </label>
           </div>
 
-          {/* Learning Notes */}
+          {/* Learning */}
           <div className="form-section">
-            <div className="form-section-title">Notes</div>
+            <div className="form-section-title">Learning</div>
+            <div className="date-input-row">
+              <span className="date-label">Date Learned</span>
+              <div className="date-input-wrapper">
+                <input
+                  type="date"
+                  value={form.date_learned || ""}
+                  onChange={(e) =>
+                    setForm({ ...form, date_learned: e.target.value || null })
+                  }
+                  className={form.date_learned ? "" : "date-empty"}
+                />
+                {!form.date_learned && (
+                  <span className="date-placeholder">--/--/----</span>
+                )}
+              </div>
+              {form.date_learned && (
+                <button
+                  type="button"
+                  className="btn-icon btn-clear-date"
+                  onClick={() => setForm({ ...form, date_learned: null })}
+                  title="Clear date"
+                >
+                  &times;
+                </button>
+              )}
+            </div>
             <label>
               Learning Notes
               <textarea
@@ -580,7 +693,7 @@ export default function EditMovePanel({
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={saving}
             >
               Cancel
@@ -610,6 +723,27 @@ export default function EditMovePanel({
               </button>
               <button className="btn btn-primary" onClick={handleCreateTheme}>
                 Create Theme
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unsaved Changes Modal */}
+      {showUnsavedModal && (
+        <div className="modal-overlay" onClick={() => setShowUnsavedModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modal-title">Unsaved Changes</h3>
+            <p className="modal-message">You have unsaved changes. What would you like to do?</p>
+            <div className="modal-actions modal-actions-three">
+              <button className="btn btn-secondary" onClick={() => setShowUnsavedModal(false)}>
+                Keep Editing
+              </button>
+              <button className="btn btn-danger" onClick={() => { setShowUnsavedModal(false); onClose(); }}>
+                Discard
+              </button>
+              <button className="btn btn-primary" onClick={handleSaveAndClose} disabled={saving}>
+                {saving ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
