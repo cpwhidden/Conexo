@@ -1,5 +1,6 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
+import client from "../../api/client";
 
 interface MoveNodeData {
   move: {
@@ -8,12 +9,14 @@ interface MoveNodeData {
     is_state: boolean;
     starting_beat: number;
     beat_count: number;
+    cover_media_id?: string | null;
   };
   hasStoredPosition: boolean;
   onAddConnection?: (move: MoveNodeData["move"]) => void;
   onExplore?: (move: MoveNodeData["move"]) => void;
   focusPosition?: "left" | "center" | "right" | null;
   onInfoClick?: (move: MoveNodeData["move"]) => void;
+  showPreview?: boolean;
   // Graph analysis data
   connectionStatus?: {
     hasIncoming: boolean;
@@ -25,8 +28,24 @@ interface MoveNodeData {
 
 function MoveNode({ data, selected }: NodeProps) {
   const [hovered, setHovered] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<string | null>(null);
   const nodeData = data as unknown as MoveNodeData;
-  const { move, focusPosition, onInfoClick, connectionStatus, componentIndex, showComponentColors } = nodeData;
+  const { move, focusPosition, onInfoClick, connectionStatus, componentIndex, showComponentColors, showPreview } = nodeData;
+
+  // Fetch cover media URL for preview
+  const shouldShowPreview = showPreview && focusPosition === "center" && move.cover_media_id;
+  useEffect(() => {
+    if (!shouldShowPreview) {
+      setPreviewUrl(null);
+      setPreviewType(null);
+      return;
+    }
+    client.get(`/media/${move.cover_media_id}/url`).then((res) => {
+      setPreviewUrl(res.data.url);
+      setPreviewType(res.data.content_type || null);
+    }).catch(() => { setPreviewUrl(null); setPreviewType(null); });
+  }, [shouldShowPreview, move.cover_media_id]);
 
   // Show info icon on outer edge in focus mode (always visible, not just on hover)
   const showFocusInfoIcon = focusPosition && onInfoClick;
@@ -66,6 +85,25 @@ function MoveNode({ data, selected }: NodeProps) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      {previewUrl && (
+        <div className="graph-node-preview">
+          {previewType?.startsWith("video/") ? (
+            <video
+              src={previewUrl}
+              muted
+              playsInline
+              loop
+              onClick={(e) => {
+                e.stopPropagation();
+                const vid = e.currentTarget;
+                if (vid.paused) vid.play(); else vid.pause();
+              }}
+            />
+          ) : (
+            <img src={previewUrl} alt="" />
+          )}
+        </div>
+      )}
       {/* Target handles (incoming connections) on all 4 sides */}
       <Handle type="target" position={Position.Top} id="target-top" />
       <Handle type="target" position={Position.Right} id="target-right" />

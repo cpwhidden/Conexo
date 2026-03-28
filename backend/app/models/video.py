@@ -31,4 +31,6 @@ class MoveVideo(Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
-    move: Mapped["Move"] = relationship(back_populates="videos")  # noqa: F821
+    move: Mapped["Move"] = relationship(  # noqa: F821
+        back_populates="videos", foreign_keys=[move_id]
+    )

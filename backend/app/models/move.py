@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, String, Text, text
+from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, ForeignKeyConstraint, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -115,6 +115,14 @@ class Move(Base):
     impact: Mapped[int | None] = mapped_column(nullable=True)
     learning_priority: Mapped[int | None] = mapped_column(nullable=True)
 
+    # Cover media
+    cover_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("move_videos.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Learning
+    date_learned: Mapped[datetime | None] = mapped_column(Date, nullable=True)
+
     # Styling notes
     leader_styling: Mapped[str | None] = mapped_column(String(300), nullable=True)
     follower_styling: Mapped[str | None] = mapped_column(String(300), nullable=True)
@@ -127,7 +135,10 @@ class Move(Base):
 
     user: Mapped["User"] = relationship(back_populates="moves")  # noqa: F821
     videos: Mapped[list["MoveVideo"]] = relationship(  # noqa: F821
-        back_populates="move", lazy="selectin", cascade="all, delete-orphan"
+        back_populates="move",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        foreign_keys="MoveVideo.move_id",
     )
     outgoing_connections: Mapped[list["MoveConnection"]] = relationship(  # noqa: F821
         foreign_keys="MoveConnection.source_move_id",
@@ -140,4 +151,7 @@ class Move(Base):
         back_populates="target_move",
         lazy="selectin",
         cascade="all, delete-orphan",
+    )
+    cues: Mapped[list["MoveCue"]] = relationship(  # noqa: F821
+        back_populates="move", lazy="selectin", cascade="all, delete-orphan"
     )

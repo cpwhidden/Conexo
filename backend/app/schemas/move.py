@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -29,6 +29,7 @@ class MoveCreate(BaseModel):
     sensual_energy: int | None = Field(default=None, ge=0, le=10)
     impact: int | None = Field(default=None, ge=0, le=10)
     learning_priority: int | None = Field(default=None, ge=0, le=10)
+    date_learned: date | None = None
     leader_styling: str | None = Field(default=None, max_length=300)
     follower_styling: str | None = Field(default=None, max_length=300)
     learning_notes: str | None = None
@@ -63,6 +64,7 @@ class MoveUpdate(BaseModel):
     sensual_energy: int | None = Field(default=None, ge=0, le=10)
     impact: int | None = Field(default=None, ge=0, le=10)
     learning_priority: int | None = Field(default=None, ge=0, le=10)
+    date_learned: date | None = None
     leader_styling: str | None = Field(default=None, max_length=300)
     follower_styling: str | None = Field(default=None, max_length=300)
     learning_notes: str | None = None
@@ -91,8 +93,20 @@ class MoveResponse(BaseModel):
     learning_priority: int | None
     leader_styling: str | None
     follower_styling: str | None
+    date_learned: date | None
     learning_notes: str | None
+    cover_media_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class MoveGraphData(MoveResponse):
+    """Extended move data for graph view with enriched metadata."""
+
+    media_count: int = 0
+    theme_names: list[str] = []
+    cue_descriptions: list[str] = []
+    outgoing_connection_count: int = 0
+    incoming_connection_count: int = 0
