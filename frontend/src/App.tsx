@@ -3,6 +3,8 @@ import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import CollectionDetailPage from "./pages/CollectionDetailPage";
 import CollectionGraphPage from "./pages/CollectionGraphPage";
+import DrawConnectionsPage from "./pages/DrawConnectionsPage";
+import LearnPage from "./pages/LearnPage";
 import CollectionsPage from "./pages/CollectionsPage";
 import LoginPage from "./pages/LoginPage";
 import MoveDetailPage from "./pages/MoveDetailPage";
@@ -34,6 +36,8 @@ function App() {
           <Route path="/collections/:id" element={<Navigate to="graph" replace />} />
           <Route path="/collections/:id/moves" element={<CollectionDetailPage />} />
           <Route path="/collections/:id/graph" element={<CollectionGraphPage />} />
+          <Route path="/collections/:id/learn" element={<LearnPage />} />
+          <Route path="/collections/:id/learn/draw-connections" element={<DrawConnectionsPage />} />
           <Route path="/sequences" element={<SequencesPage />} />
           <Route path="/sequences/:sequenceId" element={<SequenceDetailPage />} />
           <Route path="/themes" element={<ThemesPage />} />

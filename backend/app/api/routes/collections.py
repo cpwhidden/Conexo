@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import nulls_last, select
+from sqlalchemy import func, nulls_last, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy.orm import noload
@@ -11,8 +11,11 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.collection import Collection, CollectionMove
 from app.models.connection import MoveConnection
+from app.models.cue import MoveCue
 from app.models.move import Move
+from app.models.theme import Theme, ThemeMove
 from app.models.user import User
+from app.models.video import MoveVideo
 from app.schemas.collection import (
     CollectionCreate,
     CollectionGraphDataResponse,
@@ -24,7 +27,7 @@ from app.schemas.collection import (
     CollectionWithMovesResponse,
 )
 from app.schemas.connection import ConnectionResponse
-from app.schemas.move import MoveResponse
+from app.schemas.move import MoveGraphData
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 
@@ -44,6 +47,42 @@ async def list_collections(
     collections = result.scalars().all()
 
     # Build response with move_count
+    return [
+        CollectionResponse(
+            id=c.id,
+            name=c.name,
+            description=c.description,
+            dance_style=c.dance_style,
+            is_default=c.is_default,
+            date_last_opened=c.date_last_opened,
+            move_count=len(c.collection_moves),
+            created_at=c.created_at,
+            updated_at=c.updated_at,
+        )
+        for c in collections
+    ]
+
+
+@router.get("/by-move/{move_id}", response_model=list[CollectionResponse])
+async def get_collections_for_move(
+    move_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all collections that contain a specific move."""
+    await _get_user_move(db, move_id, current_user.id)
+
+    result = await db.execute(
+        select(Collection)
+        .join(CollectionMove)
+        .where(
+            Collection.user_id == current_user.id,
+            CollectionMove.move_id == move_id,
+        )
+        .order_by(Collection.name)
+    )
+    collections = result.scalars().all()
+
     return [
         CollectionResponse(
             id=c.id,
@@ -309,9 +348,58 @@ async def get_collection_graph_data(
     else:
         connection_objects = []
 
+    # Enrich moves with media counts, theme names, and cue descriptions
+    media_counts: dict[uuid.UUID, int] = {}
+    theme_names_map: dict[uuid.UUID, list[str]] = {}
+    cue_descs_map: dict[uuid.UUID, list[str]] = {}
+
+    if move_ids:
+        # Media counts
+        vc_result = await db.execute(
+            select(MoveVideo.move_id, func.count())
+            .where(MoveVideo.move_id.in_(move_ids))
+            .group_by(MoveVideo.move_id)
+        )
+        for mid, cnt in vc_result.all():
+            media_counts[mid] = cnt
+
+        # Theme names
+        tn_result = await db.execute(
+            select(ThemeMove.move_id, Theme.name)
+            .join(Theme, ThemeMove.theme_id == Theme.id)
+            .where(ThemeMove.move_id.in_(move_ids))
+        )
+        for mid, tname in tn_result.all():
+            theme_names_map.setdefault(mid, []).append(tname)
+
+        # Cue descriptions
+        cd_result = await db.execute(
+            select(MoveCue.move_id, MoveCue.description)
+            .where(MoveCue.move_id.in_(move_ids))
+        )
+        for mid, desc in cd_result.all():
+            cue_descs_map.setdefault(mid, []).append(desc)
+
+    # Connection counts (from the already-fetched connections)
+    outgoing_counts: dict[uuid.UUID, int] = {}
+    incoming_counts: dict[uuid.UUID, int] = {}
+    for c in connection_objects:
+        outgoing_counts[c.source_move_id] = outgoing_counts.get(c.source_move_id, 0) + 1
+        incoming_counts[c.target_move_id] = incoming_counts.get(c.target_move_id, 0) + 1
+
+    enriched_moves = []
+    for m in move_objects:
+        data = MoveGraphData.model_validate(m)
+        data.media_count = media_counts.get(m.id, 0)
+        data.theme_names = theme_names_map.get(m.id, [])
+        data.cue_descriptions = cue_descs_map.get(m.id, [])
+        data.outgoing_connection_count = outgoing_counts.get(m.id, 0)
+        data.incoming_connection_count = incoming_counts.get(m.id, 0)
+        enriched_moves.append(data)
+
     return CollectionGraphDataResponse(
         collection=collection_response,
-        moves=[MoveResponse.model_validate(m) for m in move_objects],
+        moves=enriched_moves,
         connections=[ConnectionResponse.model_validate(c) for c in connection_objects],
     )
 

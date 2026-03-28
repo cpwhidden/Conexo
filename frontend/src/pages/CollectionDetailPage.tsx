@@ -165,6 +165,9 @@ export default function CollectionDetailPage() {
               <Link to={`/collections/${id}/graph`} className="btn btn-primary">
                 View Graph
               </Link>
+              <Link to={`/collections/${id}/learn`} className="btn btn-secondary">
+                Learn
+              </Link>
               <button
                 className="btn btn-secondary"
                 onClick={() => setEditing(true)}

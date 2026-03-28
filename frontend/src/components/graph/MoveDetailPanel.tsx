@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import type { Move, Theme, DanceStyle } from "../../types";
+import type { Collection, Move, Theme, DanceStyle } from "../../types";
 import client from "../../api/client";
 import { useDropdownKeyNav } from "../../hooks/useDropdownKeyNav";
 
@@ -21,6 +21,9 @@ export default function MoveDetailPanel({
   onDeleteMove,
   closing,
 }: MoveDetailPanelProps) {
+  // Collection membership state
+  const [moveCollections, setMoveCollections] = useState<Collection[]>([]);
+
   // Theme state
   const [themes, setThemes] = useState<Theme[]>([]);
   const [moveThemes, setMoveThemes] = useState<Theme[]>([]);
@@ -36,6 +39,7 @@ export default function MoveDetailPanel({
     client
       .get(`/themes?dance_style=${encodeURIComponent(move.dance_style)}`)
       .then((res) => setThemes(res.data));
+    client.get(`/collections/by-move/${move.id}`).then((res) => setMoveCollections(res.data));
   }, [move.id, move.dance_style]);
 
   const availableThemes = themes.filter(
@@ -290,6 +294,20 @@ export default function MoveDetailPanel({
             </div>
           </div>
         </div>
+
+        {/* Collections */}
+        {moveCollections.length > 0 && (
+          <div className="form-section">
+            <div className="panel-section-title">Collections</div>
+            <div className="themes-tag-container">
+              {moveCollections.map((col) => (
+                <Link key={col.id} to={`/collections/${col.id}/graph?layout=focus&node=${move.id}`} className="theme-tag" style={{ textDecoration: "none" }}>
+                  {col.name}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="slide-panel-actions">
           <button className="btn btn-primary" onClick={onAddConnection}>

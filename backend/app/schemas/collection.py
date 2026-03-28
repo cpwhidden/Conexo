@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.schemas.connection import ConnectionResponse
-from app.schemas.move import MoveResponse
+from app.schemas.move import MoveGraphData
 
 DANCE_STYLE_CHOICES = Literal[
     "Salsa", "Bachata", "Zouk", "Kizomba", "West Coast Swing", "Lambada"
@@ -66,5 +66,5 @@ class CollectionGraphDataResponse(BaseModel):
     """Combined response for the graph view: collection + full moves + connections."""
 
     collection: CollectionWithMovesResponse
-    moves: list[MoveResponse]
+    moves: list[MoveGraphData]
     connections: list[ConnectionResponse]
