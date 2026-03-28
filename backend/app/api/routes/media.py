@@ -1,0 +1,148 @@
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user
+from app.api.routes.moves import _get_user_move
+from app.core.database import get_db
+from app.models.move import Move
+from app.models.user import User
+from app.models.video import MoveVideo
+from app.schemas.media import MediaResponse, MediaUpdate, MediaURLResponse
+from app.services import storage
+
+router = APIRouter(tags=["media"])
+
+
+@router.post(
+    "/moves/{move_id}/media",
+    response_model=MediaResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_media(
+    move_id: uuid.UUID,
+    file: UploadFile,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    move = await _get_user_move(db, move_id, current_user.id)
+    file_data = await file.read()
+    gcs_key = storage.upload_file(
+        file_data, file.content_type or "video/mp4", str(current_user.id)
+    )
+    video = MoveVideo(
+        move_id=move_id,
+        user_id=current_user.id,
+        gcs_key=gcs_key,
+        filename=file.filename or "media",
+        content_type=file.content_type or "video/mp4",
+        size_bytes=len(file_data),
+    )
+    db.add(video)
+    await db.flush()
+
+    # Auto-set as cover media if this is the first media for the move
+    if move.cover_media_id is None:
+        move.cover_media_id = video.id
+        await db.flush()
+
+    return MediaResponse.model_validate(video)
+
+
+@router.get("/moves/{move_id}/media", response_model=list[MediaResponse])
+async def list_media(
+    move_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_user_move(db, move_id, current_user.id)
+    result = await db.execute(
+        select(MoveVideo).where(
+            MoveVideo.move_id == move_id, MoveVideo.user_id == current_user.id
+        )
+    )
+    return [MediaResponse.model_validate(v) for v in result.scalars().all()]
+
+
+@router.get("/media/{media_id}/url", response_model=MediaURLResponse)
+async def get_media_url(
+    media_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    media = await _get_user_media(db, media_id, current_user.id)
+    url = storage.generate_signed_url(media.gcs_key)
+    return MediaURLResponse(url=url, content_type=media.content_type)
+
+
+@router.patch("/media/{media_id}", response_model=MediaResponse)
+async def update_media(
+    media_id: uuid.UUID,
+    data: MediaUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    media = await _get_user_media(db, media_id, current_user.id)
+    media.filename = data.filename
+    await db.flush()
+    return MediaResponse.model_validate(media)
+
+
+@router.patch("/moves/{move_id}/cover-media/{media_id}", status_code=status.HTTP_200_OK)
+async def set_cover_media(
+    move_id: uuid.UUID,
+    media_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set a specific media item as the cover media for a move."""
+    move = await _get_user_move(db, move_id, current_user.id)
+    # Verify the media belongs to this move
+    media = await _get_user_media(db, media_id, current_user.id)
+    if media.move_id != move_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Media does not belong to this move",
+        )
+    move.cover_media_id = media_id
+    await db.flush()
+    return {"cover_media_id": str(media_id)}
+
+
+@router.delete("/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_media(
+    media_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    media = await _get_user_media(db, media_id, current_user.id)
+
+    # If this was the cover media, clear it
+    move_result = await db.execute(
+        select(Move).where(Move.id == media.move_id, Move.user_id == current_user.id)
+    )
+    move = move_result.scalar_one_or_none()
+    if move and move.cover_media_id == media_id:
+        move.cover_media_id = None
+        await db.flush()
+
+    storage.delete_file(media.gcs_key)
+    await db.delete(media)
+
+
+async def _get_user_media(
+    db: AsyncSession, media_id: uuid.UUID, user_id: uuid.UUID
+) -> MoveVideo:
+    result = await db.execute(
+        select(MoveVideo).where(
+            MoveVideo.id == media_id, MoveVideo.user_id == user_id
+        )
+    )
+    media = result.scalar_one_or_none()
+    if media is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Media not found"
+        )
+    return media

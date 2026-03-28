@@ -41,9 +41,19 @@ export interface Move {
   learning_priority: number | null;
   leader_styling: string | null;
   follower_styling: string | null;
+  date_learned: string | null;
   learning_notes: string | null;
+  cover_media_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface MoveGraphData extends Move {
+  media_count: number;
+  theme_names: string[];
+  cue_descriptions: string[];
+  outgoing_connection_count: number;
+  incoming_connection_count: number;
 }
 
 export interface MoveCreate {
@@ -68,6 +78,7 @@ export interface MoveCreate {
   learning_priority?: number | null;
   leader_styling?: string | null;
   follower_styling?: string | null;
+  date_learned?: string | null;
   learning_notes?: string | null;
 }
 
@@ -93,10 +104,11 @@ export interface MoveUpdate {
   learning_priority?: number | null;
   leader_styling?: string | null;
   follower_styling?: string | null;
+  date_learned?: string | null;
   learning_notes?: string | null;
 }
 
-export interface Video {
+export interface Media {
   id: string;
   move_id: string;
   filename: string;
@@ -237,4 +249,38 @@ export interface ThemeCreate {
 
 export interface ThemeMoveAdd {
   move_id: string;
+}
+
+// Cues
+export type CuePerson = "leader" | "follower";
+
+export type CueBodyPart =
+  | "right foot" | "right leg" | "left foot" | "left leg"
+  | "hips" | "core" | "chest" | "back"
+  | "right shoulder" | "right arm"
+  | "left shoulder" | "left arm" | "left hand"
+  | "neck" | "head" | "center of gravity";
+
+export const CUE_BODY_PARTS: CueBodyPart[] = [
+  "right foot", "right leg", "left foot", "left leg",
+  "hips", "core", "chest", "back",
+  "right shoulder", "right arm",
+  "left shoulder", "left arm", "left hand",
+  "neck", "head", "center of gravity",
+];
+
+export interface Cue {
+  id: string;
+  move_id: string;
+  beat: number;
+  person: CuePerson;
+  body_part: CueBodyPart;
+  description: string;
+}
+
+export interface CueCreate {
+  beat: number;
+  person: CuePerson;
+  body_part: CueBodyPart;
+  description: string;
 }

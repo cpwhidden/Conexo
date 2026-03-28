@@ -1,13 +1,13 @@
 import { useCallback, useRef, useState } from "react";
-import type { Video } from "../types";
-import VideoUploadDialog from "./VideoUploadDialog";
+import type { Media } from "../types";
+import MediaUploadDialog from "./MediaUploadDialog";
 
-interface VideoUploadProps {
+interface MediaUploadProps {
   moveId: string;
-  onUploaded: (video: Video) => void;
+  onUploaded: (media: Media) => void;
 }
 
-export default function VideoUpload({ moveId, onUploaded }: VideoUploadProps) {
+export default function MediaUpload({ moveId, onUploaded }: MediaUploadProps) {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,13 +17,13 @@ export default function VideoUpload({ moveId, onUploaded }: VideoUploadProps) {
   const validateAndOpen = useCallback((file: File) => {
     if (file.size === 0) {
       setError(
-        "This file appears empty (0 bytes). If dragging from macOS Photos, try exporting the video to a file first, then upload that file."
+        "This file appears empty (0 bytes). If dragging from macOS Photos, try exporting the media to a file first, then upload that file."
       );
       return;
     }
 
-    if (!file.type.startsWith("video/")) {
-      setError("Please upload a video file.");
+    if (!file.type.startsWith("video/") && !file.type.startsWith("image/")) {
+      setError("Please upload a video or image file.");
       return;
     }
 
@@ -77,41 +77,41 @@ export default function VideoUpload({ moveId, onUploaded }: VideoUploadProps) {
   }, []);
 
   const handleDialogUploaded = useCallback(
-    (video: Video) => {
+    (media: Media) => {
       setPendingFile(null);
       if (fileRef.current) fileRef.current.value = "";
-      onUploaded(video);
+      onUploaded(media);
     },
     [onUploaded]
   );
 
   return (
-    <div className="video-upload">
+    <div className="media-upload">
       <div
-        className={`video-drop-zone${dragOver ? " drag-over" : ""}`}
+        className={`media-drop-zone${dragOver ? " drag-over" : ""}`}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
         <span className="drop-zone-text">
-          Drag a video here or{" "}
+          Drag media here or{" "}
           <label className="drop-zone-browse">
             browse
             <input
               ref={fileRef}
               type="file"
-              accept="video/*"
+              accept="video/*,image/*"
               onChange={handleFileChange}
               hidden
             />
           </label>
         </span>
       </div>
-      {error && <p className="video-upload-error">{error}</p>}
+      {error && <p className="media-upload-error">{error}</p>}
 
       {pendingFile && (
-        <VideoUploadDialog
+        <MediaUploadDialog
           file={pendingFile}
           moveId={moveId}
           onUploaded={handleDialogUploaded}

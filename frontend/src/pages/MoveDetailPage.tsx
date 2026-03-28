@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import client from "../api/client";
 import ConnectionList from "../components/ConnectionList";
-import VideoPlayer from "../components/VideoPlayer";
-import VideoUpload from "../components/VideoUpload";
-import type { Move, Video, Theme, DanceStyle } from "../types";
+import MediaPlayer from "../components/MediaPlayer";
+import MediaUpload from "../components/MediaUpload";
+import CuesSection from "../components/CuesSection";
+import type { Move, Media, Theme, DanceStyle, Cue, Collection } from "../types";
 import { useMoves } from "../hooks/useMoves";
 import { useDropdownKeyNav } from "../hooks/useDropdownKeyNav";
 
@@ -12,10 +13,12 @@ export default function MoveDetailPage() {
   const { moveId } = useParams();
   const navigate = useNavigate();
   const [move, setMove] = useState<Move | null>(null);
-  const [videos, setVideos] = useState<Video[]>([]);
+  const [mediaItems, setMediaItems] = useState<Media[]>([]);
+  const [cues, setCues] = useState<Cue[]>([]);
   const [themes, setThemes] = useState<Theme[]>([]);
   const [moveThemes, setMoveThemes] = useState<Theme[]>([]);
   const { moves: allMoves } = useMoves();
+  const [defaultCollectionId, setDefaultCollectionId] = useState<string | null>(null);
 
   // Theme input state
   const [themeInput, setThemeInput] = useState("");
@@ -27,29 +30,54 @@ export default function MoveDetailPage() {
   useEffect(() => {
     if (!moveId) return;
     client.get(`/moves/${moveId}`).then((res) => setMove(res.data));
-    client.get(`/moves/${moveId}/videos`).then((res) => setVideos(res.data));
+    client.get(`/moves/${moveId}/media`).then((res) => setMediaItems(res.data));
+    client.get(`/moves/${moveId}/cues`).then((res) => setCues(res.data));
     client.get(`/themes/by-move/${moveId}`).then((res) => setMoveThemes(res.data));
   }, [moveId]);
 
-  // Load available themes when move's dance style is known
+  // Load available themes and find default collection when move's dance style is known
   useEffect(() => {
     if (!move) return;
     client
       .get(`/themes?dance_style=${encodeURIComponent(move.dance_style)}`)
       .then((res) => setThemes(res.data));
+    client
+      .get(`/collections?dance_style=${encodeURIComponent(move.dance_style)}`)
+      .then((res) => {
+        const defaultCol = (res.data as Collection[]).find((c) => c.is_default);
+        if (defaultCol) setDefaultCollectionId(defaultCol.id);
+      });
   }, [move?.dance_style]);
 
-  const handleVideoUploaded = useCallback((video: Video) => {
-    setVideos((prev) => [...prev, video]);
+  const handleMediaUploaded = useCallback((media: Media) => {
+    setMediaItems((prev) => [...prev, media]);
+    // If this is the first media, backend auto-sets it as cover
+    setMove((prev) => {
+      if (prev && !prev.cover_media_id) {
+        return { ...prev, cover_media_id: media.id };
+      }
+      return prev;
+    });
   }, []);
 
-  const handleVideoDeleted = useCallback((videoId: string) => {
-    setVideos((prev) => prev.filter((v) => v.id !== videoId));
+  const handleMediaDeleted = useCallback((mediaId: string) => {
+    setMediaItems((prev) => prev.filter((v) => v.id !== mediaId));
+    // If deleted media was the cover, clear it
+    setMove((prev) => {
+      if (prev && prev.cover_media_id === mediaId) {
+        return { ...prev, cover_media_id: null };
+      }
+      return prev;
+    });
   }, []);
 
-  const handleVideoRenamed = useCallback((videoId: string, newFilename: string) => {
-    setVideos((prev) =>
-      prev.map((v) => (v.id === videoId ? { ...v, filename: newFilename } : v))
+  const handleSetCover = useCallback((mediaId: string) => {
+    setMove((prev) => (prev ? { ...prev, cover_media_id: mediaId } : prev));
+  }, []);
+
+  const handleMediaRenamed = useCallback((mediaId: string, newFilename: string) => {
+    setMediaItems((prev) =>
+      prev.map((v) => (v.id === mediaId ? { ...v, filename: newFilename } : v))
     );
   }, []);
 
@@ -159,6 +187,11 @@ export default function MoveDetailPage() {
       <div className="move-detail-header">
         <h2>{move.name}</h2>
         <div className="move-detail-actions">
+          {defaultCollectionId && (
+            <Link to={`/collections/${defaultCollectionId}/graph?node=${moveId}`} className="btn btn-secondary">
+              Graph View
+            </Link>
+          )}
           <Link to={`/moves/${moveId}/edit`} className="btn btn-secondary">
             Edit
           </Link>
@@ -170,6 +203,8 @@ export default function MoveDetailPage() {
 
       <p className="move-style">Style: {move.dance_style}</p>
       {move.description && <p className="move-description">{move.description}</p>}
+
+      <CuesSection moveId={move.id} cues={cues} onCuesChange={setCues} />
 
       {/* Timing Section */}
       <div className="detail-section">
@@ -343,15 +378,18 @@ export default function MoveDetailPage() {
       </div>
 
       <section className="move-section">
-        <h3>Videos ({videos.length})</h3>
-        <VideoUpload moveId={move.id} onUploaded={handleVideoUploaded} />
-        <div className="videos-grid">
-          {videos.map((video) => (
-            <VideoPlayer
-              key={video.id}
-              video={video}
-              onDelete={handleVideoDeleted}
-              onRenamed={handleVideoRenamed}
+        <h3>Media ({mediaItems.length})</h3>
+        <MediaUpload moveId={move.id} onUploaded={handleMediaUploaded} />
+        <div className="media-grid">
+          {mediaItems.map((media) => (
+            <MediaPlayer
+              key={media.id}
+              media={media}
+              moveId={move.id}
+              isCover={move.cover_media_id === media.id}
+              onDelete={handleMediaDeleted}
+              onRenamed={handleMediaRenamed}
+              onSetCover={handleSetCover}
             />
           ))}
         </div>

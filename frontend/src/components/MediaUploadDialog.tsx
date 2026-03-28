@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import client from "../api/client";
-import type { Video } from "../types";
+import type { Media } from "../types";
 import { trimVideo } from "../utils/ffmpeg";
 
-interface VideoUploadDialogProps {
+interface MediaUploadDialogProps {
   file: File;
   moveId: string;
-  onUploaded: (video: Video) => void;
+  onUploaded: (media: Media) => void;
   onCancel: () => void;
 }
 
@@ -26,12 +26,12 @@ function formatTime(seconds: number): string {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
-export default function VideoUploadDialog({
+export default function MediaUploadDialog({
   file,
   moveId,
   onUploaded,
   onCancel,
-}: VideoUploadDialogProps) {
+}: MediaUploadDialogProps) {
   const [filename, setFilename] = useState(stripExtension(file.name));
   const [objectURL, setObjectURL] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -99,7 +99,7 @@ export default function VideoUploadDialog({
   }, []);
 
   const handleUpload = useCallback(async () => {
-    const finalName = filename.trim() || "video";
+    const finalName = filename.trim() || "media";
     const ext = getExtension(file.name);
 
     setError(null);
@@ -123,7 +123,7 @@ export default function VideoUploadDialog({
 
       const formData = new FormData();
       formData.append("file", renamedFile);
-      const res = await client.post(`/moves/${moveId}/videos`, formData, {
+      const res = await client.post(`/moves/${moveId}/media`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       onUploaded(res.data);
@@ -134,6 +134,7 @@ export default function VideoUploadDialog({
     }
   }, [filename, file, moveId, onUploaded, showTrim, trimStart, trimEnd]);
 
+  const isVideo = file.type.startsWith("video/");
   const busy = uploading || trimming || ffmpegLoading;
 
   const clipDuration =
@@ -153,7 +154,7 @@ export default function VideoUploadDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="upload-dialog-header">
-          <h3 className="modal-title">Upload Video</h3>
+          <h3 className="modal-title">Upload Media</h3>
           <button
             className="btn-icon"
             onClick={onCancel}
@@ -164,13 +165,21 @@ export default function VideoUploadDialog({
         </div>
 
         {objectURL && (
-          <video
-            ref={videoRef}
-            src={objectURL}
-            controls
-            onLoadedMetadata={handleLoadedMetadata}
-            className="upload-dialog-video"
-          />
+          isVideo ? (
+            <video
+              ref={videoRef}
+              src={objectURL}
+              controls
+              onLoadedMetadata={handleLoadedMetadata}
+              className="upload-dialog-media"
+            />
+          ) : (
+            <img
+              src={objectURL}
+              alt="Preview"
+              className="upload-dialog-media"
+            />
+          )
         )}
 
         <div className="form-field">
@@ -183,20 +192,22 @@ export default function VideoUploadDialog({
           />
         </div>
 
-        <button
-          className={`btn ${showTrim ? "btn-secondary" : "btn-secondary"}`}
-          onClick={handleTrimToggle}
-          disabled={busy}
-          style={{ marginBottom: "1rem", width: "100%" }}
-        >
-          {ffmpegLoading
-            ? "Loading trim tools..."
-            : showTrim
-              ? "Remove Trim"
-              : "Trim Video"}
-        </button>
+        {isVideo && (
+          <button
+            className={`btn ${showTrim ? "btn-secondary" : "btn-secondary"}`}
+            onClick={handleTrimToggle}
+            disabled={busy}
+            style={{ marginBottom: "1rem", width: "100%" }}
+          >
+            {ffmpegLoading
+              ? "Loading trim tools..."
+              : showTrim
+                ? "Remove Trim"
+                : "Trim Media"}
+          </button>
+        )}
 
-        {showTrim && (
+        {showTrim && isVideo && (
           <div className="trim-controls">
             <div className="trim-field">
               <label>Start</label>
@@ -251,7 +262,7 @@ export default function VideoUploadDialog({
           </div>
         )}
 
-        {error && <p className="video-upload-error">{error}</p>}
+        {error && <p className="media-upload-error">{error}</p>}
 
         <div className="modal-actions">
           <button

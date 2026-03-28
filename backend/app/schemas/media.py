@@ -4,7 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
-class VideoResponse(BaseModel):
+class MediaResponse(BaseModel):
     id: uuid.UUID
     move_id: uuid.UUID
     filename: str
@@ -15,9 +15,10 @@ class VideoResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class VideoUpdate(BaseModel):
+class MediaUpdate(BaseModel):
     filename: str
 
 
-class VideoURLResponse(BaseModel):
+class MediaURLResponse(BaseModel):
     url: str
+    content_type: str
