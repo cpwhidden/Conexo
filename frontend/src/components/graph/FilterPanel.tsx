@@ -62,6 +62,9 @@ export default function FilterPanel({
   const [scoresExpanded, setScoresExpanded] = useState(false);
   const [boolsExpanded, setBoolsExpanded] = useState(false);
   const [tagsExpanded, setTagsExpanded] = useState(false);
+  const [tagSearch, setTagSearch] = useState("");
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  const tagInputRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Saved filters
@@ -168,12 +171,7 @@ export default function FilterPanel({
     }
   };
 
-  const selectAllTags = () => {
-    update(
-      "selectedTagNames",
-      collectionTags.map((t) => t.name)
-    );
-  };
+
 
   const clearTags = () => {
     update("selectedTagNames", []);
@@ -533,33 +531,75 @@ export default function FilterPanel({
               </div>
               {tagsExpanded && (
                 <div className="adv-section-body">
-                  <div className="filter-tags-actions">
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-tiny"
-                      onClick={selectAllTags}
-                    >
-                      Select All
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-tiny"
-                      onClick={clearTags}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                  <div className="filter-tags-grid">
-                    {collectionTags.map((tag) => (
-                      <label key={tag.id} className="filter-tag-checkbox">
-                        <input
-                          type="checkbox"
-                          checked={filters.selectedTagNames.includes(tag.name)}
-                          onChange={() => handleTagToggle(tag.name)}
-                        />
-                        <span>{tag.name}</span>
-                      </label>
-                    ))}
+                  {/* Selected tags as pills */}
+                  {filters.selectedTagNames.length > 0 && (
+                    <div className="filter-tag-pills">
+                      {filters.selectedTagNames.map((name) => (
+                        <span key={name} className="filter-tag-pill">
+                          {name}
+                          <button
+                            type="button"
+                            className="filter-tag-pill-remove"
+                            onClick={() => handleTagToggle(name)}
+                          >
+                            &times;
+                          </button>
+                        </span>
+                      ))}
+                      <button
+                        type="button"
+                        className="btn-link-small"
+                        onClick={clearTags}
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Searchable tag input */}
+                  <div className="filter-tag-search">
+                    <input
+                      ref={tagInputRef}
+                      type="text"
+                      placeholder="Search tags..."
+                      value={tagSearch}
+                      onChange={(e) => {
+                        setTagSearch(e.target.value);
+                        setShowTagSuggestions(true);
+                      }}
+                      onFocus={() => setShowTagSuggestions(true)}
+                      onBlur={() => setTimeout(() => setShowTagSuggestions(false), 150)}
+                    />
+                    {showTagSuggestions && tagSearch.trim() && (
+                      <div className="filter-tag-dropdown">
+                        {collectionTags
+                          .filter(
+                            (t) =>
+                              t.name.toLowerCase().includes(tagSearch.toLowerCase()) &&
+                              !filters.selectedTagNames.includes(t.name)
+                          )
+                          .map((tag) => (
+                            <div
+                              key={tag.id}
+                              className="filter-tag-option"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                handleTagToggle(tag.name);
+                                setTagSearch("");
+                              }}
+                            >
+                              {tag.name}
+                            </div>
+                          ))}
+                        {collectionTags.filter(
+                          (t) =>
+                            t.name.toLowerCase().includes(tagSearch.toLowerCase()) &&
+                            !filters.selectedTagNames.includes(t.name)
+                        ).length === 0 && (
+                          <div className="filter-tag-option disabled">No matching tags</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

@@ -1359,6 +1359,53 @@ export default function CollectionGraphPage() {
     [filteredMoves]
   );
 
+  // When filter hides the focused/selected move, BFS to find nearest visible move
+  useEffect(() => {
+    if (!isFilterActive || filteredMoveIds.size === 0) return;
+
+    const currentId = layout === "focus" ? focusedMoveId : selectedMove?.id;
+    if (!currentId || filteredMoveIds.has(currentId)) return;
+
+    // Build adjacency from all connections (not just filtered)
+    const adj = new Map<string, Set<string>>();
+    for (const c of connections) {
+      if (!adj.has(c.source_move_id)) adj.set(c.source_move_id, new Set());
+      if (!adj.has(c.target_move_id)) adj.set(c.target_move_id, new Set());
+      adj.get(c.source_move_id)!.add(c.target_move_id);
+      adj.get(c.target_move_id)!.add(c.source_move_id);
+    }
+
+    // BFS from currentId to find first visible move
+    const visited = new Set<string>([currentId]);
+    const queue = [currentId];
+    let found: string | null = null;
+
+    while (queue.length > 0) {
+      const node = queue.shift()!;
+      if (filteredMoveIds.has(node) && node !== currentId) {
+        found = node;
+        break;
+      }
+      for (const neighbor of adj.get(node) || []) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          queue.push(neighbor);
+        }
+      }
+    }
+
+    // Fallback to first filtered move if BFS found nothing
+    const targetId = found || filteredMoves[0]?.id;
+    if (!targetId) return;
+
+    if (layout === "focus") {
+      setFocusedMoveId(targetId);
+    } else {
+      const move = moves.find((m) => m.id === targetId);
+      if (move) setSelectedMove(move);
+    }
+  }, [filteredMoveIds, isFilterActive]);
+
   // Convert data to React Flow nodes and edges
   const { initialNodes, initialEdges } = useMemo(() => {
     if (!collection) return { initialNodes: [], initialEdges: [] };
