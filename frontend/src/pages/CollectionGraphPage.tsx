@@ -1747,34 +1747,31 @@ export default function CollectionGraphPage() {
           if (e.id === selectedEdgeId) return e;
 
           if (layout === "focus" && centerPos) {
-            // In focus mode, determine direction by node x-position relative to center
             const sourcePos = nodePositions.get(e.source);
             const targetPos = nodePositions.get(e.target);
 
             if (sourcePos && targetPos) {
-              // Right side of center = outgoing (orange), left side = incoming (blue)
               const edgeMidX = (sourcePos.x + targetPos.x) / 2;
               if (edgeMidX >= centerPos.x) {
-                return { ...e, style: { stroke: "#FF8C42", strokeWidth: 2.5 } };
+                return { ...e, style: { stroke: "#FF8C42", strokeWidth: 2.5 }, markerEnd: { type: MarkerType.ArrowClosed, color: "#FF8C42" } };
               } else {
-                return { ...e, style: { stroke: "#4A9EFF", strokeWidth: 2.5 } };
+                return { ...e, style: { stroke: "#4A9EFF", strokeWidth: 2.5 }, markerEnd: { type: MarkerType.ArrowClosed, color: "#4A9EFF" } };
               }
             }
-            // Fallback for edges we can't position
-            return { ...e, style: { stroke: "#FF8C42", strokeWidth: 2 } };
+            return { ...e, style: { stroke: "#FF8C42", strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: "#FF8C42" } };
           }
 
           const isOutgoing = activeNodeIds.has(e.source);
           const isIncoming = activeNodeIds.has(e.target);
 
           if (isOutgoing && isIncoming) {
-            return { ...e, style: { stroke: "#FF8C42", strokeWidth: 2.5 } };
+            return { ...e, style: { stroke: "#FF8C42", strokeWidth: 2.5 }, markerEnd: { type: MarkerType.ArrowClosed, color: "#FF8C42" } };
           } else if (isOutgoing) {
-            return { ...e, style: { stroke: "#FF8C42", strokeWidth: 2.5 } };
+            return { ...e, style: { stroke: "#FF8C42", strokeWidth: 2.5 }, markerEnd: { type: MarkerType.ArrowClosed, color: "#FF8C42" } };
           } else if (isIncoming) {
-            return { ...e, style: { stroke: "#4A9EFF", strokeWidth: 2.5 } };
+            return { ...e, style: { stroke: "#4A9EFF", strokeWidth: 2.5 }, markerEnd: { type: MarkerType.ArrowClosed, color: "#4A9EFF" } };
           } else {
-            return { ...e, style: { stroke: "#555", strokeWidth: 1, opacity: 0.5 } };
+            return { ...e, style: { stroke: "#555", strokeWidth: 1, opacity: 0.5 }, markerEnd: { type: MarkerType.ArrowClosed, color: "#555" } };
           }
         })
       );
