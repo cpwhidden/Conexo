@@ -25,8 +25,6 @@ export interface Move {
   beat_count: number;
   difficulty: number;
   familiarity: number;
-  tags: string[];
-  dance_style: string;
   starting_beat: number | null;
   is_state: boolean;
   key_egress: boolean;
@@ -50,7 +48,7 @@ export interface Move {
 
 export interface MoveGraphData extends Move {
   media_count: number;
-  theme_names: string[];
+  tag_names: string[];
   cue_descriptions: string[];
   outgoing_connection_count: number;
   incoming_connection_count: number;
@@ -62,8 +60,6 @@ export interface MoveCreate {
   beat_count: number;
   difficulty: number;
   familiarity: number;
-  tags?: string[];
-  dance_style: DanceStyle;
   starting_beat?: number | null;
   is_state?: boolean;
   key_egress?: boolean;
@@ -80,6 +76,7 @@ export interface MoveCreate {
   follower_styling?: string | null;
   date_learned?: string | null;
   learning_notes?: string | null;
+  collection_id?: string;
 }
 
 export interface MoveUpdate {
@@ -88,8 +85,6 @@ export interface MoveUpdate {
   beat_count?: number;
   difficulty?: number;
   familiarity?: number;
-  tags?: string[];
-  dance_style?: DanceStyle;
   starting_beat?: number | null;
   is_state?: boolean;
   key_egress?: boolean;
@@ -119,6 +114,7 @@ export interface Media {
 
 export interface Connection {
   id: string;
+  collection_id: string;
   source_move_id: string;
   target_move_id: string;
   label: string | null;
@@ -128,6 +124,7 @@ export interface Connection {
 }
 
 export interface ConnectionCreate {
+  collection_id: string;
   source_move_id: string;
   target_move_id: string;
   label?: string | null;
@@ -146,7 +143,6 @@ export interface Collection {
   name: string;
   description: string | null;
   dance_style: string;
-  is_default: boolean;
   date_last_opened: string | null;
   move_count: number;
   created_at: string;
@@ -176,6 +172,38 @@ export interface CollectionCreate {
 export interface CollectionMoveAdd {
   move_id: string;
   notes?: string | null;
+}
+
+// Tags (collection-scoped)
+export interface Tag {
+  id: string;
+  collection_id: string;
+  name: string;
+  created_at: string;
+}
+
+export interface TagCreate {
+  name: string;
+}
+
+// Collection Filters
+export interface FilterCriteria {
+  search?: string;
+  [key: string]: unknown;
+}
+
+export interface CollectionFilter {
+  id: string;
+  collection_id: string;
+  name: string;
+  criteria: FilterCriteria;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CollectionFilterCreate {
+  name: string;
+  criteria: FilterCriteria;
 }
 
 // Sequences
@@ -217,38 +245,6 @@ export interface SequenceMoveAdd {
   custom_name?: string | null;
   custom_beat_count?: number | null;
   notes?: string | null;
-}
-
-// Themes
-export interface Theme {
-  id: string;
-  name: string;
-  dance_style: string;
-  description: string | null;
-  move_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ThemeMove {
-  id: string;
-  move_id: string;
-  move_name: string;
-  added_at: string;
-}
-
-export interface ThemeWithMoves extends Theme {
-  moves: ThemeMove[];
-}
-
-export interface ThemeCreate {
-  name: string;
-  dance_style: DanceStyle;
-  description?: string | null;
-}
-
-export interface ThemeMoveAdd {
-  move_id: string;
 }
 
 // Cues

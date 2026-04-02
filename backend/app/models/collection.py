@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Float, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import Float, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,7 +29,6 @@ class Collection(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     dance_style: Mapped[str] = mapped_column(String(100), nullable=False)
-    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     date_last_opened: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -39,6 +38,15 @@ class Collection(Base):
     user: Mapped["User"] = relationship(back_populates="collections")  # noqa: F821
     collection_moves: Mapped[list["CollectionMove"]] = relationship(
         back_populates="collection", lazy="selectin", cascade="all, delete-orphan"
+    )
+    connections: Mapped[list["MoveConnection"]] = relationship(  # noqa: F821
+        back_populates="collection", lazy="noload", cascade="all, delete-orphan"
+    )
+    tags: Mapped[list["Tag"]] = relationship(  # noqa: F821
+        back_populates="collection", lazy="noload", cascade="all, delete-orphan"
+    )
+    filters: Mapped[list["CollectionFilter"]] = relationship(  # noqa: F821
+        back_populates="collection", lazy="noload", cascade="all, delete-orphan"
     )
 
 

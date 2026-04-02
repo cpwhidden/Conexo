@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import client from "../api/client";
 import ConnectionList from "../components/ConnectionList";
 import MediaPlayer from "../components/MediaPlayer";
 import MediaUpload from "../components/MediaUpload";
 import CuesSection from "../components/CuesSection";
-import type { Move, Media, Theme, DanceStyle, Cue, Collection } from "../types";
+import type { Move, Media, Cue, Collection } from "../types";
 import { useMoves } from "../hooks/useMoves";
-import { useDropdownKeyNav } from "../hooks/useDropdownKeyNav";
 
 export default function MoveDetailPage() {
   const { moveId } = useParams();
@@ -15,43 +14,19 @@ export default function MoveDetailPage() {
   const [move, setMove] = useState<Move | null>(null);
   const [mediaItems, setMediaItems] = useState<Media[]>([]);
   const [cues, setCues] = useState<Cue[]>([]);
-  const [themes, setThemes] = useState<Theme[]>([]);
-  const [moveThemes, setMoveThemes] = useState<Theme[]>([]);
   const { moves: allMoves } = useMoves();
-  const [defaultCollectionId, setDefaultCollectionId] = useState<string | null>(null);
-
-  // Theme input state
-  const [themeInput, setThemeInput] = useState("");
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [pendingThemeName, setPendingThemeName] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [moveCollections, setMoveCollections] = useState<Collection[]>([]);
 
   useEffect(() => {
     if (!moveId) return;
     client.get(`/moves/${moveId}`).then((res) => setMove(res.data));
     client.get(`/moves/${moveId}/media`).then((res) => setMediaItems(res.data));
     client.get(`/moves/${moveId}/cues`).then((res) => setCues(res.data));
-    client.get(`/themes/by-move/${moveId}`).then((res) => setMoveThemes(res.data));
+    client.get(`/collections/by-move/${moveId}`).then((res) => setMoveCollections(res.data));
   }, [moveId]);
-
-  // Load available themes and find default collection when move's dance style is known
-  useEffect(() => {
-    if (!move) return;
-    client
-      .get(`/themes?dance_style=${encodeURIComponent(move.dance_style)}`)
-      .then((res) => setThemes(res.data));
-    client
-      .get(`/collections?dance_style=${encodeURIComponent(move.dance_style)}`)
-      .then((res) => {
-        const defaultCol = (res.data as Collection[]).find((c) => c.is_default);
-        if (defaultCol) setDefaultCollectionId(defaultCol.id);
-      });
-  }, [move?.dance_style]);
 
   const handleMediaUploaded = useCallback((media: Media) => {
     setMediaItems((prev) => [...prev, media]);
-    // If this is the first media, backend auto-sets it as cover
     setMove((prev) => {
       if (prev && !prev.cover_media_id) {
         return { ...prev, cover_media_id: media.id };
@@ -62,7 +37,6 @@ export default function MoveDetailPage() {
 
   const handleMediaDeleted = useCallback((mediaId: string) => {
     setMediaItems((prev) => prev.filter((v) => v.id !== mediaId));
-    // If deleted media was the cover, clear it
     setMove((prev) => {
       if (prev && prev.cover_media_id === mediaId) {
         return { ...prev, cover_media_id: null };
@@ -87,108 +61,18 @@ export default function MoveDetailPage() {
     navigate("/");
   };
 
-  // Filter themes not already assigned to this move
-  const availableThemes = themes.filter(
-    (t) => !moveThemes.some((mt) => mt.id === t.id)
-  );
-
-  // Filter suggestions based on input
-  const filteredSuggestions = availableThemes.filter((t) =>
-    t.name.toLowerCase().includes(themeInput.toLowerCase())
-  );
-
-  // Check if input matches an existing theme exactly
-  const exactMatch = availableThemes.find(
-    (t) => t.name.toLowerCase() === themeInput.toLowerCase()
-  );
-
-  const handleAddExistingTheme = async (theme: Theme) => {
-    if (!moveId) return;
-    await client.post(`/themes/${theme.id}/moves`, { move_id: moveId });
-    setMoveThemes((prev) => [...prev, theme]);
-    setThemeInput("");
-    setShowSuggestions(false);
-  };
-
-  // Theme suggestions keyboard navigation
-  const themeItemCount =
-    filteredSuggestions.length +
-    (!exactMatch && themeInput.trim() ? 1 : 0);
-  const handleThemeSelect = useCallback(
-    (index: number) => {
-      if (index < filteredSuggestions.length) {
-        handleAddExistingTheme(filteredSuggestions[index]);
-      } else {
-        setPendingThemeName(themeInput.trim());
-        setShowCreateModal(true);
-      }
-    },
-    [filteredSuggestions, themeInput, handleAddExistingTheme]
-  );
-  const { highlightedIndex: themeHighlight, handleKeyDown: handleThemeNavKeyDown } =
-    useDropdownKeyNav({
-      itemCount: themeItemCount,
-      onSelect: handleThemeSelect,
-      onEscape: () => {
-        setShowSuggestions(false);
-        setThemeInput("");
-      },
-      enabled: showSuggestions && !!themeInput,
-    });
-
-  const handleInputKeyDown = (e: React.KeyboardEvent) => {
-    handleThemeNavKeyDown(e);
-    if (e.defaultPrevented) return;
-    if (e.key === "Enter" && themeInput.trim()) {
-      e.preventDefault();
-      if (exactMatch) {
-        handleAddExistingTheme(exactMatch);
-      } else if (filteredSuggestions.length === 1) {
-        handleAddExistingTheme(filteredSuggestions[0]);
-      } else {
-        setPendingThemeName(themeInput.trim());
-        setShowCreateModal(true);
-      }
-    } else if (e.key === "Escape") {
-      setShowSuggestions(false);
-      setThemeInput("");
-    }
-  };
-
-  const handleCreateTheme = async () => {
-    if (!move || !moveId || !pendingThemeName) return;
-    try {
-      const createRes = await client.post("/themes", {
-        name: pendingThemeName,
-        dance_style: move.dance_style as DanceStyle,
-      });
-      const newTheme = createRes.data;
-      await client.post(`/themes/${newTheme.id}/moves`, { move_id: moveId });
-      setThemes((prev) => [...prev, newTheme]);
-      setMoveThemes((prev) => [...prev, newTheme]);
-      setThemeInput("");
-      setShowCreateModal(false);
-      setPendingThemeName("");
-    } catch (err) {
-      console.error("Failed to create theme:", err);
-    }
-  };
-
-  const handleRemoveFromTheme = async (themeId: string) => {
-    if (!moveId) return;
-    await client.delete(`/themes/${themeId}/moves/${moveId}`);
-    setMoveThemes((prev) => prev.filter((t) => t.id !== themeId));
-  };
-
   if (!move) return <div className="loading">Loading...</div>;
+
+  // Find a collection to link to for graph view
+  const firstCollection = moveCollections.length > 0 ? moveCollections[0] : null;
 
   return (
     <div className="move-detail-page">
       <div className="move-detail-header">
         <h2>{move.name}</h2>
         <div className="move-detail-actions">
-          {defaultCollectionId && (
-            <Link to={`/collections/${defaultCollectionId}/graph?node=${moveId}`} className="btn btn-secondary">
+          {firstCollection && (
+            <Link to={`/collections/${firstCollection.id}/graph?node=${moveId}`} className="btn btn-secondary">
               Graph View
             </Link>
           )}
@@ -201,7 +85,6 @@ export default function MoveDetailPage() {
         </div>
       </div>
 
-      <p className="move-style">Style: {move.dance_style}</p>
       {move.description && <p className="move-description">{move.description}</p>}
 
       <CuesSection moveId={move.id} cues={cues} onCuesChange={setCues} />
@@ -227,7 +110,7 @@ export default function MoveDetailPage() {
         </div>
       </div>
 
-      {/* Stats Section - 2x2 grid: Difficulty, Leadability / Familiarity, Mental Availability */}
+      {/* Stats Section */}
       <div className="detail-section">
         <h4 className="detail-section-title">Stats</h4>
         <div className="move-stats stats-grid">
@@ -286,77 +169,24 @@ export default function MoveDetailPage() {
         </div>
       )}
 
-      {/* Tags */}
-      {move.tags.length > 0 && (
-        <div className="move-tags">
-          {move.tags.map((tag) => (
-            <span key={tag} className="tag">
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Themes - tag-like UI */}
-      <div className="move-themes-section">
-        <h4>Themes</h4>
-        <div className="themes-tag-container">
-          {moveThemes.map((theme) => (
-            <span key={theme.id} className="theme-tag">
-              <Link to={`/themes/${theme.id}`}>{theme.name}</Link>
-              <button
-                className="theme-tag-remove"
-                onClick={() => handleRemoveFromTheme(theme.id)}
-                title="Remove from theme"
+      {/* Collections this move belongs to */}
+      {moveCollections.length > 0 && (
+        <div className="move-themes-section">
+          <h4>Collections</h4>
+          <div className="themes-tag-container">
+            {moveCollections.map((col) => (
+              <Link
+                key={col.id}
+                to={`/collections/${col.id}/graph?layout=focus&node=${move.id}`}
+                className="theme-tag"
+                style={{ textDecoration: "none" }}
               >
-                ×
-              </button>
-            </span>
-          ))}
-          <div className="theme-input-wrapper">
-            <input
-              ref={inputRef}
-              type="text"
-              className="theme-input"
-              placeholder="Add theme..."
-              value={themeInput}
-              onChange={(e) => {
-                setThemeInput(e.target.value);
-                setShowSuggestions(true);
-              }}
-              onFocus={() => setShowSuggestions(true)}
-              onBlur={() => {
-                setTimeout(() => setShowSuggestions(false), 200);
-              }}
-              onKeyDown={handleInputKeyDown}
-            />
-            {showSuggestions && themeInput && (
-              <div className="theme-suggestions">
-                {filteredSuggestions.map((theme, idx) => (
-                  <div
-                    key={theme.id}
-                    className={`theme-suggestion ${idx === themeHighlight ? "highlighted" : ""}`}
-                    onMouseDown={() => handleAddExistingTheme(theme)}
-                  >
-                    {theme.name}
-                  </div>
-                ))}
-                {!exactMatch && themeInput.trim() && (
-                  <div
-                    className={`theme-suggestion theme-suggestion-new ${filteredSuggestions.length === themeHighlight ? "highlighted" : ""}`}
-                    onMouseDown={() => {
-                      setPendingThemeName(themeInput.trim());
-                      setShowCreateModal(true);
-                    }}
-                  >
-                    Create "{themeInput.trim()}"
-                  </div>
-                )}
-              </div>
-            )}
+                {col.name}
+              </Link>
+            ))}
           </div>
         </div>
-      </div>
+      )}
 
       {/* Styling Section */}
       <div className="detail-section">
@@ -399,33 +229,6 @@ export default function MoveDetailPage() {
         <h3>Connections</h3>
         <ConnectionList moveId={move.id} allMoves={allMoves} />
       </section>
-
-      {/* Create Theme Modal */}
-      {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Create New Theme</h3>
-            <p>
-              Create a new theme called "<strong>{pendingThemeName}</strong>" for{" "}
-              {move.dance_style}?
-            </p>
-            <div className="modal-actions">
-              <button
-                className="btn btn-secondary"
-                onClick={() => {
-                  setShowCreateModal(false);
-                  setPendingThemeName("");
-                }}
-              >
-                Cancel
-              </button>
-              <button className="btn btn-primary" onClick={handleCreateTheme}>
-                Create Theme
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

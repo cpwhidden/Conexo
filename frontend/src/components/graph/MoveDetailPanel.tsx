@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import type { Collection, Move, Theme, DanceStyle } from "../../types";
+import type { Collection, Move, Tag } from "../../types";
 import client from "../../api/client";
 import { useDropdownKeyNav } from "../../hooks/useDropdownKeyNav";
 
 interface MoveDetailPanelProps {
   move: Move;
+  collectionId: string;
   onClose: () => void;
   onAddConnection: () => void;
   onEditMove: () => void;
@@ -15,6 +16,7 @@ interface MoveDetailPanelProps {
 
 export default function MoveDetailPanel({
   move,
+  collectionId,
   onClose,
   onAddConnection,
   onEditMove,
@@ -24,113 +26,105 @@ export default function MoveDetailPanel({
   // Collection membership state
   const [moveCollections, setMoveCollections] = useState<Collection[]>([]);
 
-  // Theme state
-  const [themes, setThemes] = useState<Theme[]>([]);
-  const [moveThemes, setMoveThemes] = useState<Theme[]>([]);
-  const [themeInput, setThemeInput] = useState("");
+  // Tag state (collection-scoped)
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [moveTags, setMoveTags] = useState<Tag[]>([]);
+  const [tagInput, setTagInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [pendingThemeName, setPendingThemeName] = useState("");
-  const themeInputRef = useRef<HTMLInputElement>(null);
+  const tagInputRef = useRef<HTMLInputElement>(null);
 
-  // Load themes for this move and available themes for the dance style
+  // Load tags for this move and available tags for the collection
   useEffect(() => {
-    client.get(`/themes/by-move/${move.id}`).then((res) => setMoveThemes(res.data));
-    client
-      .get(`/themes?dance_style=${encodeURIComponent(move.dance_style)}`)
-      .then((res) => setThemes(res.data));
+    client.get(`/collections/${collectionId}/moves/${move.id}/tags`).then((res) => setMoveTags(res.data));
+    client.get(`/collections/${collectionId}/tags`).then((res) => setAllTags(res.data));
     client.get(`/collections/by-move/${move.id}`).then((res) => setMoveCollections(res.data));
-  }, [move.id, move.dance_style]);
+  }, [move.id, collectionId]);
 
-  const availableThemes = themes.filter(
-    (t) => !moveThemes.some((mt) => mt.id === t.id)
+  const availableTags = allTags.filter(
+    (t) => !moveTags.some((mt) => mt.id === t.id)
   );
 
-  const filteredSuggestions = availableThemes.filter((t) =>
-    t.name.toLowerCase().includes(themeInput.toLowerCase())
+  const filteredSuggestions = availableTags.filter((t) =>
+    t.name.toLowerCase().includes(tagInput.toLowerCase())
   );
 
-  const exactMatch = availableThemes.find(
-    (t) => t.name.toLowerCase() === themeInput.toLowerCase()
+  const exactMatch = availableTags.find(
+    (t) => t.name.toLowerCase() === tagInput.toLowerCase()
   );
 
-  const handleAddExistingTheme = useCallback(
-    async (theme: Theme) => {
-      await client.post(`/themes/${theme.id}/moves`, { move_id: move.id });
-      setMoveThemes((prev) => [...prev, theme]);
-      setThemeInput("");
+  const handleAddExistingTag = useCallback(
+    async (tag: Tag) => {
+      await client.post(`/collections/${collectionId}/tags/${tag.id}/moves`, { move_id: move.id });
+      setMoveTags((prev) => [...prev, tag]);
+      setTagInput("");
       setShowSuggestions(false);
     },
-    [move.id]
+    [move.id, collectionId]
   );
 
-  // Theme suggestions keyboard navigation
-  const themeItemCount =
+  const handleCreateTag = useCallback(async () => {
+    if (!tagInput.trim()) return;
+    try {
+      const createRes = await client.post(`/collections/${collectionId}/tags`, {
+        name: tagInput.trim(),
+      });
+      const newTag = createRes.data;
+      await client.post(`/collections/${collectionId}/tags/${newTag.id}/moves`, { move_id: move.id });
+      setAllTags((prev) => [...prev, newTag]);
+      setMoveTags((prev) => [...prev, newTag]);
+      setTagInput("");
+      setShowSuggestions(false);
+    } catch (err) {
+      console.error("Failed to create tag:", err);
+    }
+  }, [tagInput, collectionId, move.id]);
+
+  // Tag suggestions keyboard navigation
+  const tagItemCount =
     filteredSuggestions.length +
-    (!exactMatch && themeInput.trim() ? 1 : 0);
-  const handleThemeSelect = useCallback(
+    (!exactMatch && tagInput.trim() ? 1 : 0);
+  const handleTagSelect = useCallback(
     (index: number) => {
       if (index < filteredSuggestions.length) {
-        handleAddExistingTheme(filteredSuggestions[index]);
+        handleAddExistingTag(filteredSuggestions[index]);
       } else {
-        setPendingThemeName(themeInput.trim());
-        setShowCreateModal(true);
+        handleCreateTag();
       }
     },
-    [filteredSuggestions, themeInput, handleAddExistingTheme]
+    [filteredSuggestions, tagInput, handleAddExistingTag, handleCreateTag]
   );
-  const { highlightedIndex: themeHighlight, handleKeyDown: handleThemeNavKeyDown } =
+  const { highlightedIndex: tagHighlight, handleKeyDown: handleTagNavKeyDown } =
     useDropdownKeyNav({
-      itemCount: themeItemCount,
-      onSelect: handleThemeSelect,
+      itemCount: tagItemCount,
+      onSelect: handleTagSelect,
       onEscape: () => {
         setShowSuggestions(false);
-        setThemeInput("");
+        setTagInput("");
       },
-      enabled: showSuggestions && !!themeInput,
+      enabled: showSuggestions && !!tagInput,
     });
 
   const handleInputKeyDown = (e: React.KeyboardEvent) => {
-    handleThemeNavKeyDown(e);
+    handleTagNavKeyDown(e);
     if (e.defaultPrevented) return;
-    if (e.key === "Enter" && themeInput.trim()) {
+    if (e.key === "Enter" && tagInput.trim()) {
       e.preventDefault();
       if (exactMatch) {
-        handleAddExistingTheme(exactMatch);
+        handleAddExistingTag(exactMatch);
       } else if (filteredSuggestions.length === 1) {
-        handleAddExistingTheme(filteredSuggestions[0]);
+        handleAddExistingTag(filteredSuggestions[0]);
       } else {
-        setPendingThemeName(themeInput.trim());
-        setShowCreateModal(true);
+        handleCreateTag();
       }
     } else if (e.key === "Escape") {
       setShowSuggestions(false);
-      setThemeInput("");
+      setTagInput("");
     }
   };
 
-  const handleCreateTheme = async () => {
-    if (!pendingThemeName) return;
-    try {
-      const createRes = await client.post("/themes", {
-        name: pendingThemeName,
-        dance_style: move.dance_style as DanceStyle,
-      });
-      const newTheme = createRes.data;
-      await client.post(`/themes/${newTheme.id}/moves`, { move_id: move.id });
-      setThemes((prev) => [...prev, newTheme]);
-      setMoveThemes((prev) => [...prev, newTheme]);
-      setThemeInput("");
-      setShowCreateModal(false);
-      setPendingThemeName("");
-    } catch (err) {
-      console.error("Failed to create theme:", err);
-    }
-  };
-
-  const handleRemoveFromTheme = async (themeId: string) => {
-    await client.delete(`/themes/${themeId}/moves/${move.id}`);
-    setMoveThemes((prev) => prev.filter((t) => t.id !== themeId));
+  const handleRemoveTag = async (tagId: string) => {
+    await client.delete(`/collections/${collectionId}/tags/${tagId}/moves/${move.id}`);
+    setMoveTags((prev) => prev.filter((t) => t.id !== tagId));
   };
 
   return (
@@ -143,7 +137,6 @@ export default function MoveDetailPanel({
       </div>
       <div className="slide-panel-content">
         <div className="panel-badges">
-          <span className="badge">{move.dance_style}</span>
           {move.is_state && <span className="badge">State</span>}
         </div>
 
@@ -170,7 +163,7 @@ export default function MoveDetailPanel({
           )}
         </div>
 
-        {/* Stats - ordered: Difficulty, Leadability, Familiarity, Mental Availability */}
+        {/* Stats */}
         <div className="panel-section-title">Stats</div>
         <div className="panel-stats">
           <div className="panel-stat">
@@ -224,27 +217,17 @@ export default function MoveDetailPanel({
           </div>
         )}
 
-        {move.tags && move.tags.length > 0 && (
-          <div className="panel-tags">
-            {move.tags.map((tag) => (
-              <span key={tag} className="tag">
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Themes */}
+        {/* Tags (collection-scoped) */}
         <div className="move-themes-section">
-          <div className="panel-section-title">Themes</div>
+          <div className="panel-section-title">Tags</div>
           <div className="themes-tag-container">
-            {moveThemes.map((theme) => (
-              <span key={theme.id} className="theme-tag">
-                <Link to={`/themes/${theme.id}`}>{theme.name}</Link>
+            {moveTags.map((tag) => (
+              <span key={tag.id} className="theme-tag">
+                {tag.name}
                 <button
                   className="theme-tag-remove"
-                  onClick={() => handleRemoveFromTheme(theme.id)}
-                  title="Remove from theme"
+                  onClick={() => handleRemoveTag(tag.id)}
+                  title="Remove tag"
                 >
                   &times;
                 </button>
@@ -252,13 +235,13 @@ export default function MoveDetailPanel({
             ))}
             <div className="theme-input-wrapper">
               <input
-                ref={themeInputRef}
+                ref={tagInputRef}
                 type="text"
                 className="theme-input"
-                placeholder="Add theme..."
-                value={themeInput}
+                placeholder="Add tag..."
+                value={tagInput}
                 onChange={(e) => {
-                  setThemeInput(e.target.value);
+                  setTagInput(e.target.value);
                   setShowSuggestions(true);
                 }}
                 onFocus={() => setShowSuggestions(true)}
@@ -267,26 +250,23 @@ export default function MoveDetailPanel({
                 }}
                 onKeyDown={handleInputKeyDown}
               />
-              {showSuggestions && themeInput && (
+              {showSuggestions && tagInput && (
                 <div className="theme-suggestions">
-                  {filteredSuggestions.map((theme, idx) => (
+                  {filteredSuggestions.map((tag, idx) => (
                     <div
-                      key={theme.id}
-                      className={`theme-suggestion ${idx === themeHighlight ? "highlighted" : ""}`}
-                      onMouseDown={() => handleAddExistingTheme(theme)}
+                      key={tag.id}
+                      className={`theme-suggestion ${idx === tagHighlight ? "highlighted" : ""}`}
+                      onMouseDown={() => handleAddExistingTag(tag)}
                     >
-                      {theme.name}
+                      {tag.name}
                     </div>
                   ))}
-                  {!exactMatch && themeInput.trim() && (
+                  {!exactMatch && tagInput.trim() && (
                     <div
-                      className={`theme-suggestion theme-suggestion-new ${filteredSuggestions.length === themeHighlight ? "highlighted" : ""}`}
-                      onMouseDown={() => {
-                        setPendingThemeName(themeInput.trim());
-                        setShowCreateModal(true);
-                      }}
+                      className={`theme-suggestion theme-suggestion-new ${filteredSuggestions.length === tagHighlight ? "highlighted" : ""}`}
+                      onMouseDown={() => handleCreateTag()}
                     >
-                      Create "{themeInput.trim()}"
+                      Create "{tagInput.trim()}"
                     </div>
                   )}
                 </div>
@@ -326,33 +306,6 @@ export default function MoveDetailPanel({
           )}
         </div>
       </div>
-
-      {/* Create Theme Modal */}
-      {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Create New Theme</h3>
-            <p>
-              Create a new theme called "<strong>{pendingThemeName}</strong>" for{" "}
-              {move.dance_style}?
-            </p>
-            <div className="modal-actions">
-              <button
-                className="btn btn-secondary"
-                onClick={() => {
-                  setShowCreateModal(false);
-                  setPendingThemeName("");
-                }}
-              >
-                Cancel
-              </button>
-              <button className="btn btn-primary" onClick={handleCreateTheme}>
-                Create Theme
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

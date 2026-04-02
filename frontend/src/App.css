@@ -3684,3 +3684,53 @@ select optgroup {
   border: 1px solid rgba(74, 222, 128, 0.3);
   border-radius: 8px;
 }
+
+/* Tag Manager */
+.tag-manager-create {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.tag-manager-create input {
+  flex: 1;
+}
+
+.tag-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tag-manager-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background: #1e1e32;
+  border-radius: 6px;
+  border: 1px solid #333;
+}
+
+.tag-manager-name {
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.tag-manager-name:hover {
+  color: #e94560;
+}
+
+.tag-manager-edit-input {
+  flex: 1;
+  margin-right: 0.5rem;
+}
+
+.btn-danger-icon {
+  color: #888;
+  font-size: 1.2rem;
+}
+
+.btn-danger-icon:hover {
+  color: #e94560;
+}

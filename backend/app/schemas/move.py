@@ -1,12 +1,7 @@
 import uuid
 from datetime import date, datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
-
-DANCE_STYLE_CHOICES = Literal[
-    "Salsa", "Bachata", "Zouk", "Kizomba", "West Coast Swing", "Lambada", "Yoga"
-]
 
 
 class MoveCreate(BaseModel):
@@ -15,8 +10,6 @@ class MoveCreate(BaseModel):
     beat_count: int = Field(ge=0)
     difficulty: int = Field(ge=0, le=10)
     familiarity: int = Field(ge=0, le=10)
-    tags: list[str] = Field(default_factory=list)
-    dance_style: DANCE_STYLE_CHOICES
     starting_beat: int = Field(ge=1, le=8)
     is_state: bool = False
     key_egress: bool = False
@@ -33,6 +26,7 @@ class MoveCreate(BaseModel):
     leader_styling: str | None = Field(default=None, max_length=300)
     follower_styling: str | None = Field(default=None, max_length=300)
     learning_notes: str | None = None
+    collection_id: uuid.UUID | None = None
 
     @model_validator(mode="after")
     def validate_state_fields(self):
@@ -51,7 +45,6 @@ class MoveUpdate(BaseModel):
     beat_count: int | None = Field(default=None, ge=0)
     difficulty: int | None = Field(default=None, ge=0, le=10)
     familiarity: int | None = Field(default=None, ge=0, le=10)
-    tags: list[str] | None = None
     starting_beat: int | None = Field(default=None, ge=1, le=8)
     is_state: bool | None = None
     key_egress: bool | None = None
@@ -77,8 +70,6 @@ class MoveResponse(BaseModel):
     beat_count: int
     difficulty: int
     familiarity: int
-    tags: list[str]
-    dance_style: str
     starting_beat: int
     is_state: bool
     key_egress: bool
@@ -106,7 +97,7 @@ class MoveGraphData(MoveResponse):
     """Extended move data for graph view with enriched metadata."""
 
     media_count: int = 0
-    theme_names: list[str] = []
+    tag_names: list[str] = []
     cue_descriptions: list[str] = []
     outgoing_connection_count: int = 0
     incoming_connection_count: int = 0

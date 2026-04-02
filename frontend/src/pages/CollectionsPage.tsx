@@ -17,17 +17,7 @@ export default function CollectionsPage() {
   const [filterStyle, setFilterStyle] = useState<string>("");
 
   useEffect(() => {
-    const init = async () => {
-      // Ensure default collections exist for this user
-      try {
-        await client.post("/collections/ensure-defaults");
-      } catch {
-        // Ignore errors - defaults may already exist
-      }
-      // Then load all collections
-      await loadCollections();
-    };
-    init();
+    loadCollections();
   }, []);
 
   const loadCollections = async () => {
@@ -55,22 +45,10 @@ export default function CollectionsPage() {
     }
   };
 
-  // Separate default and user collections
-  // Only show default collections that have at least one move
-  const defaultCollections = collections.filter(
-    (c) => c.is_default && c.move_count > 0
-  );
-  const userCollections = collections.filter((c) => !c.is_default);
-
-  // Apply filter to user collections only (defaults always shown)
-  const filteredUserCollections = filterStyle
-    ? userCollections.filter((c) => c.dance_style === filterStyle)
-    : userCollections;
-
-  // Filter default collections too when filter is active
-  const filteredDefaultCollections = filterStyle
-    ? defaultCollections.filter((c) => c.dance_style === filterStyle)
-    : defaultCollections;
+  // Apply filter
+  const filteredCollections = filterStyle
+    ? collections.filter((c) => c.dance_style === filterStyle)
+    : collections;
 
   if (loading) return <div className="loading">Loading collections...</div>;
 
@@ -133,49 +111,28 @@ export default function CollectionsPage() {
         </select>
       </div>
 
-      {/* Default Collections Section */}
-      {filteredDefaultCollections.length > 0 && (
-        <section className="default-collections-section">
-          <div className="default-collections-grid">
-            {filteredDefaultCollections.map((collection) => (
-              <Link
-                key={collection.id}
-                to={`/collections/${collection.id}`}
-                className="default-collection-card"
-              >
-                {collection.name}
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* User Collections Section */}
-      {filteredUserCollections.length === 0 ? (
+      {filteredCollections.length === 0 ? (
         <div className="empty-state">
           {filterStyle
             ? `No ${filterStyle} collections yet`
-            : "No custom collections yet. Create your first one!"}
+            : "No collections yet. Create your first one!"}
         </div>
       ) : (
-        <>
-          <h3 className="section-title">My Collections</h3>
-          <div className="list-grid">
-            {filteredUserCollections.map((collection) => (
-              <Link
-                key={collection.id}
-                to={`/collections/${collection.id}`}
-                className="list-card"
-              >
-                <h3 className="list-card-name">{collection.name}</h3>
-                <span className="list-card-style">{collection.dance_style}</span>
-                {collection.description && (
-                  <p className="list-card-description">{collection.description}</p>
-                )}
-              </Link>
-            ))}
-          </div>
-        </>
+        <div className="list-grid">
+          {filteredCollections.map((collection) => (
+            <Link
+              key={collection.id}
+              to={`/collections/${collection.id}`}
+              className="list-card"
+            >
+              <h3 className="list-card-name">{collection.name}</h3>
+              <span className="list-card-style">{collection.dance_style}</span>
+              {collection.description && (
+                <p className="list-card-description">{collection.description}</p>
+              )}
+            </Link>
+          ))}
+        </div>
       )}
     </div>
   );

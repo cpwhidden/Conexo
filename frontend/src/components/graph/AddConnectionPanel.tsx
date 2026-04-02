@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import type { Connection, Move, MoveCreate, DanceStyle, Theme, Cue } from "../../types";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import type { Connection, Move, MoveCreate, Tag, Cue } from "../../types";
 import CuesSection from "../CuesSection";
 import client from "../../api/client";
 import { multiTermMatch, highlightTerms } from "../../utils/search";
@@ -12,9 +12,10 @@ export interface ConnectionPreview {
 
 interface AddConnectionPanelProps {
   sourceMove: Move;
-  allDanceStyleMoves: Move[];
+  allMoves: Move[];
   collectionMoveIds: Set<string>;
   existingConnections: Connection[];
+  collectionId: string;
   collectionDanceStyle: string;
   onSave: (
     targetMoveId: string,
@@ -29,9 +30,10 @@ interface AddConnectionPanelProps {
 
 export default function AddConnectionPanel({
   sourceMove,
-  allDanceStyleMoves,
+  allMoves,
   collectionMoveIds,
   existingConnections,
+  collectionId,
   collectionDanceStyle,
   onSave,
   onAddMoveToCollection,
@@ -55,8 +57,6 @@ export default function AddConnectionPanel({
     beat_count: 4,
     difficulty: 5,
     familiarity: 1,
-    tags: [],
-    dance_style: collectionDanceStyle as DanceStyle,
     starting_beat: 1,
     is_state: false,
     key_egress: false,
@@ -72,21 +72,18 @@ export default function AddConnectionPanel({
     leader_styling: null,
     follower_styling: null,
     learning_notes: null,
+    collection_id: collectionId,
   });
-  const [tagInput, setTagInput] = useState("");
   const [creatingMove, setCreatingMove] = useState(false);
 
   // Cues state for new move form
   const [newMoveCues, setNewMoveCues] = useState<Cue[]>([]);
 
-  // Theme state for new move form
-  const [availableThemes, setAvailableThemes] = useState<Theme[]>([]);
-  const [selectedThemes, setSelectedThemes] = useState<Theme[]>([]);
-  const [newMoveThemeInput, setNewMoveThemeInput] = useState("");
-  const [showNewMoveThemeSuggestions, setShowNewMoveThemeSuggestions] = useState(false);
-  const [showNewMoveCreateThemeModal, setShowNewMoveCreateThemeModal] = useState(false);
-  const [newMovePendingThemeName, setNewMovePendingThemeName] = useState("");
-  const newMoveThemeInputRef = useRef<HTMLInputElement>(null);
+  // Tag state for new move form
+  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
+  const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
+  const [newMoveTagInput, setNewMoveTagInput] = useState("");
+  const [showNewMoveTagSuggestions, setShowNewMoveTagSuggestions] = useState(false);
 
   // Notify parent of preview connection changes
   useEffect(() => {
@@ -106,93 +103,89 @@ export default function AddConnectionPanel({
     return () => onPreviewChange?.(null);
   }, [onPreviewChange]);
 
-  // Load available themes for the dance style
+  // Load available tags for the collection
   useEffect(() => {
     client
-      .get(`/themes?dance_style=${encodeURIComponent(collectionDanceStyle)}`)
-      .then((res) => setAvailableThemes(res.data));
-  }, [collectionDanceStyle]);
+      .get(`/collections/${collectionId}/tags`)
+      .then((res) => setAvailableTags(res.data));
+  }, [collectionId]);
 
-  const filteredNewMoveThemes = availableThemes
-    .filter((t) => !selectedThemes.some((st) => st.id === t.id))
-    .filter((t) => t.name.toLowerCase().includes(newMoveThemeInput.toLowerCase()));
+  const filteredNewMoveTags = availableTags
+    .filter((t) => !selectedTags.some((st) => st.id === t.id))
+    .filter((t) => t.name.toLowerCase().includes(newMoveTagInput.toLowerCase()));
 
-  const newMoveThemeExactMatch = availableThemes
-    .filter((t) => !selectedThemes.some((st) => st.id === t.id))
-    .find((t) => t.name.toLowerCase() === newMoveThemeInput.toLowerCase());
+  const newMoveTagExactMatch = availableTags
+    .filter((t) => !selectedTags.some((st) => st.id === t.id))
+    .find((t) => t.name.toLowerCase() === newMoveTagInput.toLowerCase());
 
-  const handleSelectTheme = (theme: Theme) => {
-    setSelectedThemes((prev) => [...prev, theme]);
-    setNewMoveThemeInput("");
-    setShowNewMoveThemeSuggestions(false);
+  const handleSelectTag = (tag: Tag) => {
+    setSelectedTags((prev) => [...prev, tag]);
+    setNewMoveTagInput("");
+    setShowNewMoveTagSuggestions(false);
   };
 
-  const handleRemoveSelectedTheme = (themeId: string) => {
-    setSelectedThemes((prev) => prev.filter((t) => t.id !== themeId));
+  const handleRemoveSelectedTag = (tagId: string) => {
+    setSelectedTags((prev) => prev.filter((t) => t.id !== tagId));
   };
 
-  // New move theme suggestions keyboard navigation
-  const newMoveThemeItemCount =
-    filteredNewMoveThemes.length +
-    (!newMoveThemeExactMatch && newMoveThemeInput.trim() ? 1 : 0);
-  const handleNewMoveThemeSelect = useCallback(
-    (index: number) => {
-      if (index < filteredNewMoveThemes.length) {
-        handleSelectTheme(filteredNewMoveThemes[index]);
-      } else {
-        setNewMovePendingThemeName(newMoveThemeInput.trim());
-        setShowNewMoveCreateThemeModal(true);
-      }
-    },
-    [filteredNewMoveThemes, newMoveThemeInput]
-  );
-  const {
-    highlightedIndex: newMoveThemeHighlight,
-    handleKeyDown: handleNewMoveThemeNavKeyDown,
-  } = useDropdownKeyNav({
-    itemCount: newMoveThemeItemCount,
-    onSelect: handleNewMoveThemeSelect,
-    onEscape: () => {
-      setShowNewMoveThemeSuggestions(false);
-      setNewMoveThemeInput("");
-    },
-    enabled: showNewMoveThemeSuggestions && !!newMoveThemeInput,
-  });
-
-  const handleNewMoveThemeKeyDown = (e: React.KeyboardEvent) => {
-    handleNewMoveThemeNavKeyDown(e);
-    if (e.defaultPrevented) return;
-    if (e.key === "Enter" && newMoveThemeInput.trim()) {
-      e.preventDefault();
-      if (newMoveThemeExactMatch) {
-        handleSelectTheme(newMoveThemeExactMatch);
-      } else if (filteredNewMoveThemes.length === 1) {
-        handleSelectTheme(filteredNewMoveThemes[0]);
-      } else {
-        setNewMovePendingThemeName(newMoveThemeInput.trim());
-        setShowNewMoveCreateThemeModal(true);
-      }
-    } else if (e.key === "Escape") {
-      setShowNewMoveThemeSuggestions(false);
-      setNewMoveThemeInput("");
+  const handleCreateTagForNewMove = async () => {
+    if (!newMoveTagInput.trim()) return;
+    try {
+      const createRes = await client.post(`/collections/${collectionId}/tags`, {
+        name: newMoveTagInput.trim(),
+      });
+      const newTag = createRes.data;
+      setAvailableTags((prev) => [...prev, newTag]);
+      setSelectedTags((prev) => [...prev, newTag]);
+      setNewMoveTagInput("");
+      setShowNewMoveTagSuggestions(false);
+    } catch (err) {
+      console.error("Failed to create tag:", err);
     }
   };
 
-  const handleCreateThemeForNewMove = async () => {
-    if (!newMovePendingThemeName) return;
-    try {
-      const createRes = await client.post("/themes", {
-        name: newMovePendingThemeName,
-        dance_style: collectionDanceStyle as DanceStyle,
-      });
-      const newTheme = createRes.data;
-      setAvailableThemes((prev) => [...prev, newTheme]);
-      setSelectedThemes((prev) => [...prev, newTheme]);
-      setNewMoveThemeInput("");
-      setShowNewMoveCreateThemeModal(false);
-      setNewMovePendingThemeName("");
-    } catch (err) {
-      console.error("Failed to create theme:", err);
+  // New move tag suggestions keyboard navigation
+  const newMoveTagItemCount =
+    filteredNewMoveTags.length +
+    (!newMoveTagExactMatch && newMoveTagInput.trim() ? 1 : 0);
+  const handleNewMoveTagSelect = useCallback(
+    (index: number) => {
+      if (index < filteredNewMoveTags.length) {
+        handleSelectTag(filteredNewMoveTags[index]);
+      } else {
+        handleCreateTagForNewMove();
+      }
+    },
+    [filteredNewMoveTags, newMoveTagInput]
+  );
+  const {
+    highlightedIndex: newMoveTagHighlight,
+    handleKeyDown: handleNewMoveTagNavKeyDown,
+  } = useDropdownKeyNav({
+    itemCount: newMoveTagItemCount,
+    onSelect: handleNewMoveTagSelect,
+    onEscape: () => {
+      setShowNewMoveTagSuggestions(false);
+      setNewMoveTagInput("");
+    },
+    enabled: showNewMoveTagSuggestions && !!newMoveTagInput,
+  });
+
+  const handleNewMoveTagKeyDown = (e: React.KeyboardEvent) => {
+    handleNewMoveTagNavKeyDown(e);
+    if (e.defaultPrevented) return;
+    if (e.key === "Enter" && newMoveTagInput.trim()) {
+      e.preventDefault();
+      if (newMoveTagExactMatch) {
+        handleSelectTag(newMoveTagExactMatch);
+      } else if (filteredNewMoveTags.length === 1) {
+        handleSelectTag(filteredNewMoveTags[0]);
+      } else {
+        handleCreateTagForNewMove();
+      }
+    } else if (e.key === "Escape") {
+      setShowNewMoveTagSuggestions(false);
+      setNewMoveTagInput("");
     }
   };
 
@@ -211,13 +204,13 @@ export default function AddConnectionPanel({
 
   // Filter moves: unconnected first, already-connected at the bottom
   const filteredMoves = useMemo(() => {
-    const matching = allDanceStyleMoves.filter(
+    const matching = allMoves.filter(
       (m) => m.id !== sourceMove.id && multiTermMatch(m.name, searchQuery)
     );
     const unconnected = matching.filter((m) => !connectedIds.has(m.id));
     const connected = matching.filter((m) => connectedIds.has(m.id));
     return [...unconnected, ...connected];
-  }, [allDanceStyleMoves, connectedIds, sourceMove.id, searchQuery]);
+  }, [allMoves, connectedIds, sourceMove.id, searchQuery]);
 
   // Move search keyboard navigation
   const visibleMoves = filteredMoves.slice(0, searchLimit);
@@ -240,7 +233,7 @@ export default function AddConnectionPanel({
     });
 
   // Get selected move and check if it's in collection
-  const selectedMove = allDanceStyleMoves.find((m) => m.id === targetMoveId);
+  const selectedMove = allMoves.find((m) => m.id === targetMoveId);
   const isInCollection = (moveId: string) => collectionMoveIds.has(moveId);
   const selectedMoveInCollection = selectedMove ? isInCollection(selectedMove.id) : true;
 
@@ -271,24 +264,6 @@ export default function AddConnectionPanel({
     }
   };
 
-  const addTag = () => {
-    const tag = tagInput.trim();
-    if (tag && !newMoveForm.tags?.includes(tag)) {
-      setNewMoveForm({
-        ...newMoveForm,
-        tags: [...(newMoveForm.tags || []), tag],
-      });
-    }
-    setTagInput("");
-  };
-
-  const removeTag = (tag: string) => {
-    setNewMoveForm({
-      ...newMoveForm,
-      tags: (newMoveForm.tags || []).filter((t) => t !== tag),
-    });
-  };
-
   const handleCreateMove = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMoveForm.name.trim()) return;
@@ -301,13 +276,14 @@ export default function AddConnectionPanel({
         leader_styling: newMoveForm.leader_styling || null,
         follower_styling: newMoveForm.follower_styling || null,
         learning_notes: newMoveForm.learning_notes || null,
+        collection_id: collectionId,
       };
       const res = await client.post("/moves", payload);
       const newMoveId = res.data.id;
 
-      // Assign selected themes to the new move
-      for (const theme of selectedThemes) {
-        await client.post(`/themes/${theme.id}/moves`, { move_id: newMoveId });
+      // Assign selected tags to the new move
+      for (const tag of selectedTags) {
+        await client.post(`/collections/${collectionId}/tags/${tag.id}/moves`, { move_id: newMoveId });
       }
 
       // Create cues for the new move
@@ -334,8 +310,6 @@ export default function AddConnectionPanel({
         beat_count: 4,
         difficulty: 5,
         familiarity: 1,
-        tags: [],
-        dance_style: collectionDanceStyle as DanceStyle,
         starting_beat: 1,
         is_state: false,
         key_egress: false,
@@ -351,8 +325,9 @@ export default function AddConnectionPanel({
         leader_styling: null,
         follower_styling: null,
         learning_notes: null,
+        collection_id: collectionId,
       });
-      setSelectedThemes([]);
+      setSelectedTags([]);
       setNewMoveCues([]);
     } finally {
       setCreatingMove(false);
@@ -364,7 +339,6 @@ export default function AddConnectionPanel({
     field: "leadability" | "mental_availability" | "beat_energy" | "moderna_energy" | "sensual_energy" | "impact" | "learning_priority"
   ) => {
     const value = newMoveForm[field];
-    // All optional scores are now 0-10
     return (
       <label>
         {label} (0-10)
@@ -409,7 +383,7 @@ export default function AddConnectionPanel({
     setTimeout(() => {
       setShowNewMoveForm(false);
       setClosingNewMoveForm(false);
-    }, 200); // Match animation duration
+    }, 200);
   };
 
   // Render the New Move Form overlay
@@ -664,49 +638,17 @@ export default function AddConnectionPanel({
           </div>
 
           {/* Tags */}
-          <div className="tag-input-group">
-            <label>Tags</label>
-            <div className="tag-input-row">
-              <input
-                type="text"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addTag();
-                  }
-                }}
-                placeholder="Add a tag"
-              />
-              <button type="button" onClick={addTag} className="btn btn-secondary">
-                Add
-              </button>
-            </div>
-            <div className="tags-display">
-              {newMoveForm.tags?.map((tag) => (
-                <span key={tag} className="tag">
-                  {tag}
-                  <button type="button" onClick={() => removeTag(tag)}>
-                    &times;
-                  </button>
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Themes */}
           <div className="form-section">
-            <div className="form-section-title">Themes</div>
+            <div className="form-section-title">Tags</div>
             <div className="themes-tag-container">
-              {selectedThemes.map((theme) => (
-                <span key={theme.id} className="theme-tag">
-                  {theme.name}
+              {selectedTags.map((tag) => (
+                <span key={tag.id} className="theme-tag">
+                  {tag.name}
                   <button
                     type="button"
                     className="theme-tag-remove"
-                    onClick={() => handleRemoveSelectedTheme(theme.id)}
-                    title="Remove theme"
+                    onClick={() => handleRemoveSelectedTag(tag.id)}
+                    title="Remove tag"
                   >
                     &times;
                   </button>
@@ -714,41 +656,37 @@ export default function AddConnectionPanel({
               ))}
               <div className="theme-input-wrapper">
                 <input
-                  ref={newMoveThemeInputRef}
                   type="text"
                   className="theme-input"
-                  placeholder="Add theme..."
-                  value={newMoveThemeInput}
+                  placeholder="Add tag..."
+                  value={newMoveTagInput}
                   onChange={(e) => {
-                    setNewMoveThemeInput(e.target.value);
-                    setShowNewMoveThemeSuggestions(true);
+                    setNewMoveTagInput(e.target.value);
+                    setShowNewMoveTagSuggestions(true);
                   }}
-                  onFocus={() => setShowNewMoveThemeSuggestions(true)}
+                  onFocus={() => setShowNewMoveTagSuggestions(true)}
                   onBlur={() => {
-                    setTimeout(() => setShowNewMoveThemeSuggestions(false), 200);
+                    setTimeout(() => setShowNewMoveTagSuggestions(false), 200);
                   }}
-                  onKeyDown={handleNewMoveThemeKeyDown}
+                  onKeyDown={handleNewMoveTagKeyDown}
                 />
-                {showNewMoveThemeSuggestions && newMoveThemeInput && (
+                {showNewMoveTagSuggestions && newMoveTagInput && (
                   <div className="theme-suggestions">
-                    {filteredNewMoveThemes.map((theme, idx) => (
+                    {filteredNewMoveTags.map((tag, idx) => (
                       <div
-                        key={theme.id}
-                        className={`theme-suggestion ${idx === newMoveThemeHighlight ? "highlighted" : ""}`}
-                        onMouseDown={() => handleSelectTheme(theme)}
+                        key={tag.id}
+                        className={`theme-suggestion ${idx === newMoveTagHighlight ? "highlighted" : ""}`}
+                        onMouseDown={() => handleSelectTag(tag)}
                       >
-                        {theme.name}
+                        {tag.name}
                       </div>
                     ))}
-                    {!newMoveThemeExactMatch && newMoveThemeInput.trim() && (
+                    {!newMoveTagExactMatch && newMoveTagInput.trim() && (
                       <div
-                        className={`theme-suggestion theme-suggestion-new ${filteredNewMoveThemes.length === newMoveThemeHighlight ? "highlighted" : ""}`}
-                        onMouseDown={() => {
-                          setNewMovePendingThemeName(newMoveThemeInput.trim());
-                          setShowNewMoveCreateThemeModal(true);
-                        }}
+                        className={`theme-suggestion theme-suggestion-new ${filteredNewMoveTags.length === newMoveTagHighlight ? "highlighted" : ""}`}
+                        onMouseDown={() => handleCreateTagForNewMove()}
                       >
-                        Create "{newMoveThemeInput.trim()}"
+                        Create "{newMoveTagInput.trim()}"
                       </div>
                     )}
                   </div>
@@ -833,7 +771,6 @@ export default function AddConnectionPanel({
 
           {/* Searchable Move Select */}
           <div className="searchable-select">
-            {/* Show either the search input OR the selected move chip, not both */}
             {selectedMove ? (
               <div
                 className="selected-move-chip"
@@ -861,7 +798,6 @@ export default function AddConnectionPanel({
                   }}
                   onKeyDown={handleMoveSearchKeyDown}
                 />
-                {/* Show dropdown when searching */}
                 {searchQuery && (
                   <div className="options">
                     {filteredMoves.length === 0 ? (
@@ -966,33 +902,6 @@ export default function AddConnectionPanel({
 
     {/* New Move Form Overlay - slides in on top */}
     {showNewMoveForm && renderNewMoveForm()}
-
-    {/* Create Theme Modal for New Move */}
-    {showNewMoveCreateThemeModal && (
-      <div className="modal-overlay" onClick={() => setShowNewMoveCreateThemeModal(false)}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
-          <h3>Create New Theme</h3>
-          <p>
-            Create a new theme called "<strong>{newMovePendingThemeName}</strong>" for{" "}
-            {collectionDanceStyle}?
-          </p>
-          <div className="modal-actions">
-            <button
-              className="btn btn-secondary"
-              onClick={() => {
-                setShowNewMoveCreateThemeModal(false);
-                setNewMovePendingThemeName("");
-              }}
-            >
-              Cancel
-            </button>
-            <button className="btn btn-primary" onClick={handleCreateThemeForNewMove}>
-              Create Theme
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
   </div>
   );
 }

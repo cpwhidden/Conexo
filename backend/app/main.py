@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, collections, connections, cues, media, moves, sequences, themes
+from app.api.routes import auth, collections, connections, cues, filters, media, moves, sequences, tags
 from app.core.config import settings
 
 app = FastAPI(title="Conexo", version="0.1.0")
@@ -20,7 +20,8 @@ app.include_router(media.router, prefix="/api")
 app.include_router(connections.router, prefix="/api")
 app.include_router(collections.router, prefix="/api")
 app.include_router(sequences.router, prefix="/api")
-app.include_router(themes.router, prefix="/api")
+app.include_router(tags.router, prefix="/api")
+app.include_router(filters.router, prefix="/api")
 app.include_router(cues.router, prefix="/api")
 
 

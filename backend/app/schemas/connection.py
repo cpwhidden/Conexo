@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class ConnectionCreate(BaseModel):
+    collection_id: uuid.UUID
     source_move_id: uuid.UUID
     target_move_id: uuid.UUID
     label: str | None = Field(default=None, max_length=255)
@@ -20,6 +21,7 @@ class ConnectionUpdate(BaseModel):
 
 class ConnectionResponse(BaseModel):
     id: uuid.UUID
+    collection_id: uuid.UUID
     source_move_id: uuid.UUID
     target_move_id: uuid.UUID
     label: str | None

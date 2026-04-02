@@ -28,4 +28,3 @@ class User(Base):
     moves: Mapped[list["Move"]] = relationship(back_populates="user", lazy="selectin")  # noqa: F821
     collections: Mapped[list["Collection"]] = relationship(back_populates="user", lazy="selectin")  # noqa: F821
     sequences: Mapped[list["Sequence"]] = relationship(back_populates="user", lazy="selectin")  # noqa: F821
-    themes: Mapped[list["Theme"]] = relationship(back_populates="user", lazy="selectin")  # noqa: F821

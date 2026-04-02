@@ -17,10 +17,10 @@ class MoveConnection(Base):
     __tablename__ = "move_connections"
     __table_args__ = (
         UniqueConstraint(
-            "user_id",
+            "collection_id",
             "source_move_id",
             "target_move_id",
-            name="uq_connection_per_user",
+            name="uq_connection_per_collection",
         ),
         CheckConstraint(
             "source_move_id != target_move_id", name="ck_no_self_connection"
@@ -33,8 +33,8 @@ class MoveConnection(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    collection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("collections.id", ondelete="CASCADE"), nullable=False
     )
     source_move_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("moves.id", ondelete="CASCADE"), nullable=False
@@ -47,6 +47,7 @@ class MoveConnection(Base):
     flow: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
+    collection: Mapped["Collection"] = relationship(back_populates="connections")  # noqa: F821
     source_move: Mapped["Move"] = relationship(  # noqa: F821
         foreign_keys=[source_move_id], back_populates="outgoing_connections"
     )

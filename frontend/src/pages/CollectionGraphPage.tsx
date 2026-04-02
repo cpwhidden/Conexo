@@ -18,7 +18,7 @@ import dagre from "@dagrejs/dagre";
 import "@xyflow/react/dist/style.css";
 
 import client from "../api/client";
-import type { CollectionWithMoves, Connection, Move, MoveGraphData } from "../types";
+import type { CollectionWithMoves, Connection, Move, MoveGraphData, Tag } from "../types";
 import MoveNode from "../components/graph/MoveNode";
 import MoveDetailPanel from "../components/graph/MoveDetailPanel";
 import AddConnectionPanel, { type ConnectionPreview } from "../components/graph/AddConnectionPanel";
@@ -1139,8 +1139,8 @@ export default function CollectionGraphPage() {
     null
   );
   const [moves, setMoves] = useState<MoveGraphData[]>([]);
-  const [allDanceStyleMoves, setAllDanceStyleMoves] = useState<Move[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Read initial layout and node from URL (once, on mount)
@@ -1297,10 +1297,11 @@ export default function CollectionGraphPage() {
     setLoading(true);
     try {
       const res = await client.get(`/collections/${id}/graph-data`);
-      const { collection: col, moves: graphMoves, connections: graphConnections } = res.data;
+      const { collection: col, moves: graphMoves, connections: graphConnections, tags: graphTags } = res.data;
       setCollection(col);
       setMoves(graphMoves);
       setConnections(graphConnections);
+      setTags(graphTags || []);
     } finally {
       setLoading(false);
     }
@@ -1322,14 +1323,15 @@ export default function CollectionGraphPage() {
     }
   }, [moves, layout]);
 
-  // Fetch ALL moves of this dance style (for Add Connection panel)
+  // Fetch ALL moves (for Add Connection panel - moves are no longer dance-style-scoped)
+  const [allMoves, setAllMoves] = useState<Move[]>([]);
   useEffect(() => {
     if (!collection) return;
     client
-      .get(`/moves?dance_style=${encodeURIComponent(collection.dance_style)}`)
-      .then((res) => setAllDanceStyleMoves(res.data))
+      .get("/moves")
+      .then((res) => setAllMoves(res.data))
       .catch(console.error);
-  }, [collection?.dance_style]);
+  }, [collection]);
 
   // Create set of move IDs in this collection
   const collectionMoveIds = useMemo(
@@ -1821,6 +1823,7 @@ export default function CollectionGraphPage() {
 
       try {
         const res = await client.post("/connections", {
+          collection_id: id,
           source_move_id: sourceId,
           target_move_id: targetId,
         });
@@ -1829,7 +1832,7 @@ export default function CollectionGraphPage() {
         console.error("Failed to create connection:", error);
       }
     },
-    [connections, virtualToRealIdMap]
+    [connections, virtualToRealIdMap, id]
   );
 
   // Handle add connection from panel (with direction support)
@@ -1840,11 +1843,13 @@ export default function CollectionGraphPage() {
       const payload =
         direction === "to"
           ? {
+              collection_id: id,
               source_move_id: addConnectionMove.id,
               target_move_id: targetMoveId,
               label,
             }
           : {
+              collection_id: id,
               source_move_id: targetMoveId,
               target_move_id: addConnectionMove.id,
               label,
@@ -1853,7 +1858,7 @@ export default function CollectionGraphPage() {
       const res = await client.post("/connections", payload);
       setConnections((prev) => [...prev, res.data]);
     },
-    [addConnectionMove]
+    [addConnectionMove, id]
   );
 
   // Handle adding a new move to the collection
@@ -1871,14 +1876,15 @@ export default function CollectionGraphPage() {
       }
       // Reload all graph data so new move + its connections are picked up
       const res = await client.get(`/collections/${id}/graph-data`);
-      const { collection: col, moves: graphMoves, connections: graphConnections } = res.data;
+      const { collection: col, moves: graphMoves, connections: graphConnections, tags: graphTags } = res.data;
       setCollection(col);
       setMoves(graphMoves);
       setConnections(graphConnections);
-      // Also update allDanceStyleMoves so the new move can be selected in the panel
+      setTags(graphTags || []);
+      // Also update allMoves so the new move can be selected in the panel
       const newMove = graphMoves.find((m: Move) => m.id === moveId);
       if (newMove) {
-        setAllDanceStyleMoves((prev) => {
+        setAllMoves((prev) => {
           if (prev.some((m) => m.id === newMove.id)) return prev;
           return [...prev, newMove];
         });
@@ -1893,7 +1899,7 @@ export default function CollectionGraphPage() {
       await client.delete(`/moves/${moveId}`);
       // Remove from local state immediately for responsiveness
       setMoves((prev) => prev.filter((m) => m.id !== moveId));
-      setAllDanceStyleMoves((prev) => prev.filter((m) => m.id !== moveId));
+      setAllMoves((prev) => prev.filter((m) => m.id !== moveId));
       setConnections((prev) =>
         prev.filter((c) => c.source_move_id !== moveId && c.target_move_id !== moveId)
       );
@@ -1951,7 +1957,7 @@ export default function CollectionGraphPage() {
     setMoves((prev) =>
       prev.map((m) => (m.id === updatedMove.id ? updatedMove : m))
     );
-    setAllDanceStyleMoves((prev) =>
+    setAllMoves((prev) =>
       prev.map((m) => (m.id === updatedMove.id ? updatedMove : m))
     );
     setEditingMove(null);
@@ -2201,6 +2207,7 @@ export default function CollectionGraphPage() {
             {selectedMove && !addConnectionMove && !editingMove && (layout !== "core" || coreShowDetail) && (
               <MoveDetailPanel
                 move={selectedMove}
+                collectionId={id!}
                 onClose={handlePanelClose}
                 onAddConnection={() => {
                   setAddConnectionMove(selectedMove);
@@ -2214,9 +2221,10 @@ export default function CollectionGraphPage() {
             {addConnectionMove && (
               <AddConnectionPanel
                 sourceMove={addConnectionMove}
-                allDanceStyleMoves={allDanceStyleMoves}
+                allMoves={allMoves}
                 collectionMoveIds={collectionMoveIds}
                 existingConnections={connections}
+                collectionId={id!}
                 collectionDanceStyle={collection.dance_style}
                 onSave={handleAddConnection}
                 onAddMoveToCollection={handleAddMoveToCollection}
@@ -2228,6 +2236,7 @@ export default function CollectionGraphPage() {
             {editingMove && (
               <EditMovePanel
                 move={editingMove}
+                collectionId={id!}
                 onSave={handleMoveSave}
                 onClose={handleEditMovePanelClose}
               />

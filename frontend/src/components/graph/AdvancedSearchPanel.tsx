@@ -138,8 +138,7 @@ export default function AdvancedSearchPanel({
         const searchable = [
           m.name,
           m.description,
-          ...(m.tags || []),
-          ...(m.theme_names || []),
+          ...(m.tag_names || []),
           ...(m.cue_descriptions || []),
           m.leader_styling,
           m.follower_styling,
@@ -199,7 +198,7 @@ export default function AdvancedSearchPanel({
       if (!matchesTriState(m.media_count, filters.hasMedia)) return false;
       if (!matchesTriState(m.is_core, filters.isCore)) return false;
       if (!matchesTriState(!!m.learning_notes, filters.hasLearningNotes)) return false;
-      if (!matchesTriState((m.tags?.length || 0) > 0, filters.hasTags)) return false;
+      if (!matchesTriState((m.tag_names?.length || 0) > 0, filters.hasTags)) return false;
       if (!matchesTriState(!!m.leader_styling, filters.hasLeaderStyling)) return false;
       if (!matchesTriState(!!m.follower_styling, filters.hasFollowerStyling)) return false;
 
@@ -231,7 +230,7 @@ export default function AdvancedSearchPanel({
           {/* Text search */}
           <input
             type="text"
-            placeholder="Search name, description, tags, themes, cues, notes..."
+            placeholder="Search name, description, tags, cues, notes..."
             value={filters.text}
             onChange={(e) => update("text", e.target.value)}
             className="adv-search-text"

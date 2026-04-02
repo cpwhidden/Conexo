@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
-import type { Move, MoveUpdate, DanceStyle, Theme, Cue } from "../../types";
+import type { Move, MoveUpdate, Tag, Cue } from "../../types";
 import client from "../../api/client";
 import CuesSection from "../CuesSection";
 import { useDropdownKeyNav } from "../../hooks/useDropdownKeyNav";
 
 interface EditMovePanelProps {
   move: Move;
+  collectionId: string;
   onSave: (updatedMove: Move) => void;
   onClose: () => void;
   closing?: boolean;
@@ -14,6 +15,7 @@ interface EditMovePanelProps {
 
 export default function EditMovePanel({
   move,
+  collectionId,
   onSave,
   onClose,
   closing,
@@ -24,8 +26,6 @@ export default function EditMovePanel({
     beat_count: move.beat_count,
     difficulty: move.difficulty,
     familiarity: move.familiarity,
-    tags: move.tags,
-    dance_style: move.dance_style as DanceStyle,
     starting_beat: move.starting_beat,
     is_state: move.is_state,
     key_egress: move.key_egress,
@@ -43,21 +43,18 @@ export default function EditMovePanel({
     date_learned: move.date_learned,
     learning_notes: move.learning_notes,
   });
-  const [tagInput, setTagInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
 
   // Cues state
   const [cues, setCues] = useState<Cue[]>([]);
 
-  // Theme state
-  const [themes, setThemes] = useState<Theme[]>([]);
-  const [moveThemes, setMoveThemes] = useState<Theme[]>([]);
-  const [themeInput, setThemeInput] = useState("");
-  const [showThemeSuggestions, setShowThemeSuggestions] = useState(false);
-  const [showCreateThemeModal, setShowCreateThemeModal] = useState(false);
-  const [pendingThemeName, setPendingThemeName] = useState("");
-  const themeInputRef = useRef<HTMLInputElement>(null);
+  // Tag state (collection-scoped)
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [moveTags, setMoveTags] = useState<Tag[]>([]);
+  const [tagInput, setTagInput] = useState("");
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  const tagInputRef = useRef<HTMLInputElement>(null);
 
   // Cmd/Ctrl+Enter to save
   const formRef = useRef<HTMLFormElement>(null);
@@ -72,101 +69,95 @@ export default function EditMovePanel({
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Load cues and themes
+  // Load cues and tags
   useEffect(() => {
     client.get(`/moves/${move.id}/cues`).then((res) => setCues(res.data));
-    client.get(`/themes/by-move/${move.id}`).then((res) => setMoveThemes(res.data));
-    client
-      .get(`/themes?dance_style=${encodeURIComponent(move.dance_style)}`)
-      .then((res) => setThemes(res.data));
-  }, [move.id, move.dance_style]);
+    client.get(`/collections/${collectionId}/moves/${move.id}/tags`).then((res) => setMoveTags(res.data));
+    client.get(`/collections/${collectionId}/tags`).then((res) => setAllTags(res.data));
+  }, [move.id, collectionId]);
 
-  const availableThemes = themes.filter(
-    (t) => !moveThemes.some((mt) => mt.id === t.id)
+  const availableTags = allTags.filter(
+    (t) => !moveTags.some((mt) => mt.id === t.id)
   );
 
-  const filteredThemeSuggestions = availableThemes.filter((t) =>
-    t.name.toLowerCase().includes(themeInput.toLowerCase())
+  const filteredTagSuggestions = availableTags.filter((t) =>
+    t.name.toLowerCase().includes(tagInput.toLowerCase())
   );
 
-  const themeExactMatch = availableThemes.find(
-    (t) => t.name.toLowerCase() === themeInput.toLowerCase()
+  const tagExactMatch = availableTags.find(
+    (t) => t.name.toLowerCase() === tagInput.toLowerCase()
   );
 
-  const handleAddExistingTheme = async (theme: Theme) => {
-    await client.post(`/themes/${theme.id}/moves`, { move_id: move.id });
-    setMoveThemes((prev) => [...prev, theme]);
-    setThemeInput("");
-    setShowThemeSuggestions(false);
+  const handleAddExistingTag = async (tag: Tag) => {
+    await client.post(`/collections/${collectionId}/tags/${tag.id}/moves`, { move_id: move.id });
+    setMoveTags((prev) => [...prev, tag]);
+    setTagInput("");
+    setShowTagSuggestions(false);
   };
 
-  // Theme suggestions keyboard navigation
-  const themeItemCount =
-    filteredThemeSuggestions.length +
-    (!themeExactMatch && themeInput.trim() ? 1 : 0);
-  const handleThemeSelect = useCallback(
+  const handleCreateTag = async () => {
+    if (!tagInput.trim()) return;
+    try {
+      const createRes = await client.post(`/collections/${collectionId}/tags`, {
+        name: tagInput.trim(),
+      });
+      const newTag = createRes.data;
+      await client.post(`/collections/${collectionId}/tags/${newTag.id}/moves`, { move_id: move.id });
+      setAllTags((prev) => [...prev, newTag]);
+      setMoveTags((prev) => [...prev, newTag]);
+      setTagInput("");
+      setShowTagSuggestions(false);
+    } catch (err) {
+      console.error("Failed to create tag:", err);
+    }
+  };
+
+  // Tag suggestions keyboard navigation
+  const tagItemCount =
+    filteredTagSuggestions.length +
+    (!tagExactMatch && tagInput.trim() ? 1 : 0);
+  const handleTagSelect = useCallback(
     (index: number) => {
-      if (index < filteredThemeSuggestions.length) {
-        handleAddExistingTheme(filteredThemeSuggestions[index]);
+      if (index < filteredTagSuggestions.length) {
+        handleAddExistingTag(filteredTagSuggestions[index]);
       } else {
-        setPendingThemeName(themeInput.trim());
-        setShowCreateThemeModal(true);
+        handleCreateTag();
       }
     },
-    [filteredThemeSuggestions, themeInput, handleAddExistingTheme]
+    [filteredTagSuggestions, tagInput, handleAddExistingTag]
   );
-  const { highlightedIndex: themeHighlight, handleKeyDown: handleThemeNavKeyDown } =
+  const { highlightedIndex: tagHighlight, handleKeyDown: handleTagNavKeyDown } =
     useDropdownKeyNav({
-      itemCount: themeItemCount,
-      onSelect: handleThemeSelect,
+      itemCount: tagItemCount,
+      onSelect: handleTagSelect,
       onEscape: () => {
-        setShowThemeSuggestions(false);
-        setThemeInput("");
+        setShowTagSuggestions(false);
+        setTagInput("");
       },
-      enabled: showThemeSuggestions && !!themeInput,
+      enabled: showTagSuggestions && !!tagInput,
     });
 
-  const handleThemeInputKeyDown = (e: React.KeyboardEvent) => {
-    handleThemeNavKeyDown(e);
+  const handleTagInputKeyDown = (e: React.KeyboardEvent) => {
+    handleTagNavKeyDown(e);
     if (e.defaultPrevented) return;
-    if (e.key === "Enter" && themeInput.trim()) {
+    if (e.key === "Enter" && tagInput.trim()) {
       e.preventDefault();
-      if (themeExactMatch) {
-        handleAddExistingTheme(themeExactMatch);
-      } else if (filteredThemeSuggestions.length === 1) {
-        handleAddExistingTheme(filteredThemeSuggestions[0]);
+      if (tagExactMatch) {
+        handleAddExistingTag(tagExactMatch);
+      } else if (filteredTagSuggestions.length === 1) {
+        handleAddExistingTag(filteredTagSuggestions[0]);
       } else {
-        setPendingThemeName(themeInput.trim());
-        setShowCreateThemeModal(true);
+        handleCreateTag();
       }
     } else if (e.key === "Escape") {
-      setShowThemeSuggestions(false);
-      setThemeInput("");
+      setShowTagSuggestions(false);
+      setTagInput("");
     }
   };
 
-  const handleCreateTheme = async () => {
-    if (!pendingThemeName) return;
-    try {
-      const createRes = await client.post("/themes", {
-        name: pendingThemeName,
-        dance_style: move.dance_style as DanceStyle,
-      });
-      const newTheme = createRes.data;
-      await client.post(`/themes/${newTheme.id}/moves`, { move_id: move.id });
-      setThemes((prev) => [...prev, newTheme]);
-      setMoveThemes((prev) => [...prev, newTheme]);
-      setThemeInput("");
-      setShowCreateThemeModal(false);
-      setPendingThemeName("");
-    } catch (err) {
-      console.error("Failed to create theme:", err);
-    }
-  };
-
-  const handleRemoveFromTheme = async (themeId: string) => {
-    await client.delete(`/themes/${themeId}/moves/${move.id}`);
-    setMoveThemes((prev) => prev.filter((t) => t.id !== themeId));
+  const handleRemoveTag = async (tagId: string) => {
+    await client.delete(`/collections/${collectionId}/tags/${tagId}/moves/${move.id}`);
+    setMoveTags((prev) => prev.filter((t) => t.id !== tagId));
   };
 
   // Reset form when move changes
@@ -177,8 +168,6 @@ export default function EditMovePanel({
       beat_count: move.beat_count,
       difficulty: move.difficulty,
       familiarity: move.familiarity,
-      tags: move.tags,
-      dance_style: move.dance_style as DanceStyle,
       starting_beat: move.starting_beat,
       is_state: move.is_state,
       key_egress: move.key_egress,
@@ -229,8 +218,7 @@ export default function EditMovePanel({
       (form.leader_styling || "") !== (move.leader_styling || "") ||
       (form.follower_styling || "") !== (move.follower_styling || "") ||
       (form.date_learned || "") !== (move.date_learned || "") ||
-      (form.learning_notes || "") !== (move.learning_notes || "") ||
-      JSON.stringify(form.tags) !== JSON.stringify(move.tags)
+      (form.learning_notes || "") !== (move.learning_notes || "")
     );
   }, [form, move]);
 
@@ -284,18 +272,6 @@ export default function EditMovePanel({
     } finally {
       setSaving(false);
     }
-  };
-
-  const addTag = () => {
-    const tag = tagInput.trim();
-    if (tag && !form.tags?.includes(tag)) {
-      setForm({ ...form, tags: [...(form.tags || []), tag] });
-    }
-    setTagInput("");
-  };
-
-  const removeTag = (tag: string) => {
-    setForm({ ...form, tags: (form.tags || []).filter((t) => t !== tag) });
   };
 
   const renderOptionalSlider = (
@@ -371,11 +347,6 @@ export default function EditMovePanel({
           </label>
 
           <CuesSection moveId={move.id} cues={cues} onCuesChange={setCues} />
-
-          <label>
-            Dance Style
-            <input type="text" value={form.dance_style} disabled />
-          </label>
 
           {/* Timing */}
           <div className="form-section">
@@ -516,49 +487,17 @@ export default function EditMovePanel({
             </label>
           </div>
 
-          {/* Tags */}
+          {/* Tags (collection-scoped) */}
           <div className="form-section">
             <div className="form-section-title">Tags</div>
-            <div className="tag-input-row">
-              <input
-                type="text"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addTag();
-                  }
-                }}
-                placeholder="Add a tag and press Enter"
-              />
-              <button type="button" onClick={addTag} className="btn btn-secondary btn-sm">
-                Add
-              </button>
-            </div>
-            <div className="tags-display">
-              {form.tags?.map((tag) => (
-                <span key={tag} className="tag">
-                  {tag}
-                  <button type="button" onClick={() => removeTag(tag)}>
-                    &times;
-                  </button>
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Themes */}
-          <div className="form-section">
-            <div className="form-section-title">Themes</div>
             <div className="themes-tag-container">
-              {moveThemes.map((theme) => (
-                <span key={theme.id} className="theme-tag">
-                  <Link to={`/themes/${theme.id}`}>{theme.name}</Link>
+              {moveTags.map((tag) => (
+                <span key={tag.id} className="theme-tag">
+                  {tag.name}
                   <button
                     className="theme-tag-remove"
-                    onClick={() => handleRemoveFromTheme(theme.id)}
-                    title="Remove from theme"
+                    onClick={() => handleRemoveTag(tag.id)}
+                    title="Remove tag"
                   >
                     &times;
                   </button>
@@ -566,41 +505,38 @@ export default function EditMovePanel({
               ))}
               <div className="theme-input-wrapper">
                 <input
-                  ref={themeInputRef}
+                  ref={tagInputRef}
                   type="text"
                   className="theme-input"
-                  placeholder="Add theme..."
-                  value={themeInput}
+                  placeholder="Add tag..."
+                  value={tagInput}
                   onChange={(e) => {
-                    setThemeInput(e.target.value);
-                    setShowThemeSuggestions(true);
+                    setTagInput(e.target.value);
+                    setShowTagSuggestions(true);
                   }}
-                  onFocus={() => setShowThemeSuggestions(true)}
+                  onFocus={() => setShowTagSuggestions(true)}
                   onBlur={() => {
-                    setTimeout(() => setShowThemeSuggestions(false), 200);
+                    setTimeout(() => setShowTagSuggestions(false), 200);
                   }}
-                  onKeyDown={handleThemeInputKeyDown}
+                  onKeyDown={handleTagInputKeyDown}
                 />
-                {showThemeSuggestions && themeInput && (
+                {showTagSuggestions && tagInput && (
                   <div className="theme-suggestions">
-                    {filteredThemeSuggestions.map((theme, idx) => (
+                    {filteredTagSuggestions.map((tag, idx) => (
                       <div
-                        key={theme.id}
-                        className={`theme-suggestion ${idx === themeHighlight ? "highlighted" : ""}`}
-                        onMouseDown={() => handleAddExistingTheme(theme)}
+                        key={tag.id}
+                        className={`theme-suggestion ${idx === tagHighlight ? "highlighted" : ""}`}
+                        onMouseDown={() => handleAddExistingTag(tag)}
                       >
-                        {theme.name}
+                        {tag.name}
                       </div>
                     ))}
-                    {!themeExactMatch && themeInput.trim() && (
+                    {!tagExactMatch && tagInput.trim() && (
                       <div
-                        className={`theme-suggestion theme-suggestion-new ${filteredThemeSuggestions.length === themeHighlight ? "highlighted" : ""}`}
-                        onMouseDown={() => {
-                          setPendingThemeName(themeInput.trim());
-                          setShowCreateThemeModal(true);
-                        }}
+                        className={`theme-suggestion theme-suggestion-new ${filteredTagSuggestions.length === tagHighlight ? "highlighted" : ""}`}
+                        onMouseDown={() => handleCreateTag()}
                       >
-                        Create "{themeInput.trim()}"
+                        Create "{tagInput.trim()}"
                       </div>
                     )}
                   </div>
@@ -701,33 +637,6 @@ export default function EditMovePanel({
           </div>
         </form>
       </div>
-
-      {/* Create Theme Modal */}
-      {showCreateThemeModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateThemeModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Create New Theme</h3>
-            <p>
-              Create a new theme called "<strong>{pendingThemeName}</strong>" for{" "}
-              {move.dance_style}?
-            </p>
-            <div className="modal-actions">
-              <button
-                className="btn btn-secondary"
-                onClick={() => {
-                  setShowCreateThemeModal(false);
-                  setPendingThemeName("");
-                }}
-              >
-                Cancel
-              </button>
-              <button className="btn btn-primary" onClick={handleCreateTheme}>
-                Create Theme
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Unsaved Changes Modal */}
       {showUnsavedModal && (

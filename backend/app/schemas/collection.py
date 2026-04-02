@@ -6,9 +6,10 @@ from pydantic import BaseModel, Field
 
 from app.schemas.connection import ConnectionResponse
 from app.schemas.move import MoveGraphData
+from app.schemas.tag import TagResponse
 
 DANCE_STYLE_CHOICES = Literal[
-    "Salsa", "Bachata", "Zouk", "Kizomba", "West Coast Swing", "Lambada"
+    "Salsa", "Bachata", "Zouk", "Kizomba", "West Coast Swing", "Lambada", "Yoga"
 ]
 
 
@@ -21,7 +22,6 @@ class CollectionCreate(BaseModel):
 class CollectionUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     description: str | None = None
-    # dance_style is immutable - not included in update
 
 
 class CollectionMoveAdd(BaseModel):
@@ -51,7 +51,6 @@ class CollectionResponse(BaseModel):
     name: str
     description: str | None
     dance_style: str
-    is_default: bool
     date_last_opened: datetime | None
     move_count: int
     created_at: datetime
@@ -63,8 +62,9 @@ class CollectionWithMovesResponse(CollectionResponse):
 
 
 class CollectionGraphDataResponse(BaseModel):
-    """Combined response for the graph view: collection + full moves + connections."""
+    """Combined response for the graph view: collection + full moves + connections + tags."""
 
     collection: CollectionWithMovesResponse
     moves: list[MoveGraphData]
     connections: list[ConnectionResponse]
+    tags: list[TagResponse] = []

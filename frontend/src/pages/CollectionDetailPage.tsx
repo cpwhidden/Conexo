@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import client from "../api/client";
-import type { CollectionWithMoves, Move, CollectionMoveAdd, Collection } from "../types";
+import type { CollectionWithMoves, Move, CollectionMoveAdd } from "../types";
 
 export default function CollectionDetailPage() {
   const { id } = useParams();
@@ -14,13 +14,6 @@ export default function CollectionDetailPage() {
   const [moveNotes, setMoveNotes] = useState("");
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", description: "" });
-
-  // Delete move modal state (for default collections)
-  const [deleteMoveModal, setDeleteMoveModal] = useState<{
-    moveId: string;
-    moveName: string;
-    affectedCollections: Collection[];
-  } | null>(null);
 
   useEffect(() => {
     loadCollection();
@@ -66,33 +59,6 @@ export default function CollectionDetailPage() {
     loadCollection();
   };
 
-  // For default collections: prepare to delete the move entirely
-  const handleDeleteMoveFromDefault = async (moveId: string, moveName: string) => {
-    // Fetch all collections to find which ones contain this move
-    const collectionsRes = await client.get("/collections");
-    const allCollections: Collection[] = collectionsRes.data;
-
-    // Find collections that contain this move
-    const affectedCollections: Collection[] = [];
-    for (const col of allCollections) {
-      const detailRes = await client.get(`/collections/${col.id}`);
-      const detail: CollectionWithMoves = detailRes.data;
-      if (detail.moves.some((m) => m.move_id === moveId)) {
-        affectedCollections.push(col);
-      }
-    }
-
-    setDeleteMoveModal({ moveId, moveName, affectedCollections });
-  };
-
-  // Confirm delete move entirely
-  const confirmDeleteMove = async () => {
-    if (!deleteMoveModal) return;
-    await client.delete(`/moves/${deleteMoveModal.moveId}`);
-    setDeleteMoveModal(null);
-    loadCollection();
-  };
-
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     await client.put(`/collections/${id}`, {
@@ -112,12 +78,10 @@ export default function CollectionDetailPage() {
   if (loading) return <div className="loading">Loading...</div>;
   if (!collection) return <div className="loading">Collection not found</div>;
 
-  // Filter moves to only show same dance style that aren't already in collection
+  // Filter moves that aren't already in collection
   const moveIdsInCollection = new Set(collection.moves.map((m) => m.move_id));
   const eligibleMoves = availableMoves.filter(
-    (m) =>
-      m.dance_style === collection.dance_style &&
-      !moveIdsInCollection.has(m.id)
+    (m) => !moveIdsInCollection.has(m.id)
   );
 
   return (
@@ -168,17 +132,18 @@ export default function CollectionDetailPage() {
               <Link to={`/collections/${id}/learn`} className="btn btn-secondary">
                 Learn
               </Link>
+              <Link to={`/collections/${id}/tags`} className="btn btn-secondary">
+                Tags
+              </Link>
               <button
                 className="btn btn-secondary"
                 onClick={() => setEditing(true)}
               >
                 Edit
               </button>
-              {!collection.is_default && (
-                <button className="btn btn-danger" onClick={handleDelete}>
-                  Delete
-                </button>
-              )}
+              <button className="btn btn-danger" onClick={handleDelete}>
+                Delete
+              </button>
             </div>
           </>
         )}
@@ -187,17 +152,15 @@ export default function CollectionDetailPage() {
       <div className="collection-moves-section">
         <div className="section-header">
           <h3>Moves ({collection.moves.length})</h3>
-          {!collection.is_default && (
-            <button
-              className="btn btn-secondary"
-              onClick={() => setShowAddForm(!showAddForm)}
-            >
-              {showAddForm ? "Cancel" : "Add Move"}
-            </button>
-          )}
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowAddForm(!showAddForm)}
+          >
+            {showAddForm ? "Cancel" : "Add Move"}
+          </button>
         </div>
 
-        {showAddForm && !collection.is_default && (
+        {showAddForm && (
           <form onSubmit={handleAddMove} className="inline-form">
             <select
               value={selectedMoveId}
@@ -233,23 +196,13 @@ export default function CollectionDetailPage() {
                   {cm.move_name}
                 </Link>
                 {cm.notes && <span className="move-notes">{cm.notes}</span>}
-                {collection.is_default ? (
-                  <button
-                    className="btn-icon btn-icon-danger"
-                    onClick={() => handleDeleteMoveFromDefault(cm.move_id, cm.move_name)}
-                    title="Delete move entirely"
-                  >
-                    &times;
-                  </button>
-                ) : (
-                  <button
-                    className="btn-icon"
-                    onClick={() => handleRemoveMove(cm.move_id)}
-                    title="Remove from collection"
-                  >
-                    &times;
-                  </button>
-                )}
+                <button
+                  className="btn-icon"
+                  onClick={() => handleRemoveMove(cm.move_id)}
+                  title="Remove from collection"
+                >
+                  &times;
+                </button>
               </li>
             ))}
           </ul>
@@ -259,44 +212,6 @@ export default function CollectionDetailPage() {
       <Link to="/collections" className="back-link">
         &larr; Back to Collections
       </Link>
-
-      {/* Delete Move Modal (for default collections) */}
-      {deleteMoveModal && (
-        <div className="modal-overlay" onClick={() => setDeleteMoveModal(null)}>
-          <div className="modal modal-warning" onClick={(e) => e.stopPropagation()}>
-            <h3>⚠️ Delete Move Entirely?</h3>
-            <p>
-              This will <strong>permanently delete</strong> the move "
-              <strong>{deleteMoveModal.moveName}</strong>" and remove it from all
-              collections.
-            </p>
-            {deleteMoveModal.affectedCollections.length > 0 && (
-              <div className="affected-collections">
-                <p>This move will be removed from:</p>
-                <ul>
-                  {deleteMoveModal.affectedCollections.map((col) => (
-                    <li key={col.id}>
-                      {col.name} ({col.dance_style})
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <p className="warning-text">This action cannot be undone.</p>
-            <div className="modal-actions">
-              <button
-                className="btn btn-secondary"
-                onClick={() => setDeleteMoveModal(null)}
-              >
-                Cancel
-              </button>
-              <button className="btn btn-danger" onClick={confirmDeleteMove}>
-                Delete Move
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

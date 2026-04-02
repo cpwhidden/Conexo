@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, ForeignKeyConstraint, Index, String, Text, text
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -70,7 +70,6 @@ class Move(Base):
             name="ck_moves_learning_priority_range",
         ),
         Index("ix_moves_user_id", "user_id"),
-        Index("ix_moves_user_dance_style", "user_id", "dance_style"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -84,11 +83,6 @@ class Move(Base):
     beat_count: Mapped[int] = mapped_column(nullable=False)
     difficulty: Mapped[int] = mapped_column(nullable=False)
     familiarity: Mapped[int] = mapped_column(nullable=False)
-    tags: Mapped[list[str]] = mapped_column(
-        ARRAY(String), default=list, server_default="{}", nullable=False
-    )
-    dance_style: Mapped[str] = mapped_column(String(100), nullable=False)
-
     # Timing
     starting_beat: Mapped[int] = mapped_column(nullable=False)
     is_state: Mapped[bool] = mapped_column(

@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import client from "../api/client";
 import CuesSection from "../components/CuesSection";
-import { DANCE_STYLES } from "../types";
-import type { Cue, DanceStyle, MoveCreate } from "../types";
+import type { Cue, MoveCreate } from "../types";
 
 export default function MoveFormPage() {
   const { moveId } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const isEditing = !!moveId;
+
+  // Optional collection_id from URL params (e.g., when creating from a collection context)
+  const collectionIdFromUrl = searchParams.get("collection_id");
 
   const [form, setForm] = useState<MoveCreate>({
     name: "",
@@ -16,8 +19,6 @@ export default function MoveFormPage() {
     beat_count: 4,
     difficulty: 5,
     familiarity: 1,
-    tags: [],
-    dance_style: "Salsa",
     starting_beat: 1,
     is_state: false,
     key_egress: false,
@@ -34,8 +35,8 @@ export default function MoveFormPage() {
     follower_styling: null,
     date_learned: null,
     learning_notes: null,
+    collection_id: collectionIdFromUrl || undefined,
   });
-  const [tagInput, setTagInput] = useState("");
   const [cues, setCues] = useState<Cue[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -50,8 +51,6 @@ export default function MoveFormPage() {
         beat_count: m.beat_count,
         difficulty: m.difficulty,
         familiarity: m.familiarity,
-        tags: m.tags,
-        dance_style: m.dance_style,
         starting_beat: m.starting_beat,
         is_state: m.is_state,
         key_egress: m.key_egress,
@@ -110,18 +109,6 @@ export default function MoveFormPage() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const addTag = () => {
-    const tag = tagInput.trim();
-    if (tag && !form.tags?.includes(tag)) {
-      setForm({ ...form, tags: [...(form.tags || []), tag] });
-    }
-    setTagInput("");
-  };
-
-  const removeTag = (tag: string) => {
-    setForm({ ...form, tags: (form.tags || []).filter((t) => t !== tag) });
   };
 
   const renderOptionalSlider = (
@@ -195,27 +182,6 @@ export default function MoveFormPage() {
           localMode={!isEditing}
         />
 
-        <label>
-          Dance Style *
-          {isEditing ? (
-            <input type="text" value={form.dance_style} disabled />
-          ) : (
-            <select
-              value={form.dance_style}
-              onChange={(e) =>
-                setForm({ ...form, dance_style: e.target.value as DanceStyle })
-              }
-              required
-            >
-              {DANCE_STYLES.map((style) => (
-                <option key={style} value={style}>
-                  {style}
-                </option>
-              ))}
-            </select>
-          )}
-        </label>
-
         {/* Timing */}
         <div className="form-section">
           <div className="form-section-title">Timing</div>
@@ -271,7 +237,7 @@ export default function MoveFormPage() {
           </label>
         </div>
 
-        {/* Stats - reordered: Difficulty, Leadability, Familiarity, Mental Availability */}
+        {/* Stats */}
         <div className="form-section">
           <div className="form-section-title">Stats</div>
           <label>
@@ -430,38 +396,6 @@ export default function MoveFormPage() {
               placeholder="Issues to work out or ask a teacher about..."
             />
           </label>
-        </div>
-
-        {/* Tags */}
-        <div className="tag-input-group">
-          <label>Tags</label>
-          <div className="tag-input-row">
-            <input
-              type="text"
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addTag();
-                }
-              }}
-              placeholder="Add a tag and press Enter"
-            />
-            <button type="button" onClick={addTag} className="btn btn-secondary">
-              Add
-            </button>
-          </div>
-          <div className="tags-display">
-            {form.tags?.map((tag) => (
-              <span key={tag} className="tag">
-                {tag}
-                <button type="button" onClick={() => removeTag(tag)}>
-                  &times;
-                </button>
-              </span>
-            ))}
-          </div>
         </div>
 
         <div className="form-actions">
