@@ -1,52 +1,57 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import client from "../api/client";
-import { DANCE_STYLES } from "../types";
-import type { Sequence, SequenceCreate, DanceStyle } from "../types";
+import type { Collection, Sequence, SequenceCreate } from "../types";
 
 export default function SequencesPage() {
   const [sequences, setSequences] = useState<Sequence[]>([]);
+  const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<SequenceCreate>({
+    collection_id: "",
     name: "",
     description: "",
-    dance_style: "Salsa",
   });
   const [saving, setSaving] = useState(false);
-  const [filterStyle, setFilterStyle] = useState<string>("");
+  const [filterCollectionId, setFilterCollectionId] = useState<string>("");
 
   useEffect(() => {
-    loadSequences();
-  }, []);
-
-  const loadSequences = async () => {
-    try {
-      const res = await client.get("/sequences");
-      setSequences(res.data);
-    } finally {
+    Promise.all([
+      client.get("/sequences"),
+      client.get("/collections"),
+    ]).then(([seqRes, colRes]) => {
+      setSequences(seqRes.data);
+      setCollections(colRes.data);
+      if (colRes.data.length > 0 && !form.collection_id) {
+        setForm((f) => ({ ...f, collection_id: colRes.data[0].id }));
+      }
       setLoading(false);
-    }
-  };
+    });
+  }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.collection_id) return;
     setSaving(true);
     try {
       await client.post("/sequences", {
         ...form,
         description: form.description || null,
       });
-      setForm({ name: "", description: "", dance_style: "Salsa" });
+      setForm({ ...form, name: "", description: "" });
       setShowForm(false);
-      loadSequences();
+      const res = await client.get("/sequences");
+      setSequences(res.data);
     } finally {
       setSaving(false);
     }
   };
 
-  const filteredSequences = filterStyle
-    ? sequences.filter((s) => s.dance_style === filterStyle)
+  const collectionMap = new Map(collections.map((c) => [c.id, c]));
+
+  const filteredSequences = filterCollectionId
+    ? sequences.filter((s) => s.collection_id === filterCollectionId)
     : sequences;
 
   if (loading) return <div className="loading">Loading sequences...</div>;
@@ -73,14 +78,14 @@ export default function SequencesPage() {
             required
           />
           <select
-            value={form.dance_style}
-            onChange={(e) =>
-              setForm({ ...form, dance_style: e.target.value as DanceStyle })
-            }
+            value={form.collection_id}
+            onChange={(e) => setForm({ ...form, collection_id: e.target.value })}
+            required
           >
-            {DANCE_STYLES.map((style) => (
-              <option key={style} value={style}>
-                {style}
+            <option value="" disabled>Select collection...</option>
+            {collections.map((col) => (
+              <option key={col.id} value={col.id}>
+                {col.name}
               </option>
             ))}
           </select>
@@ -90,7 +95,7 @@ export default function SequencesPage() {
             value={form.description || ""}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
-          <button type="submit" className="btn btn-primary" disabled={saving}>
+          <button type="submit" className="btn btn-primary" disabled={saving || !form.collection_id}>
             {saving ? "Creating..." : "Create"}
           </button>
         </form>
@@ -98,13 +103,13 @@ export default function SequencesPage() {
 
       <div className="filters">
         <select
-          value={filterStyle}
-          onChange={(e) => setFilterStyle(e.target.value)}
+          value={filterCollectionId}
+          onChange={(e) => setFilterCollectionId(e.target.value)}
         >
-          <option value="">All Styles</option>
-          {DANCE_STYLES.map((style) => (
-            <option key={style} value={style}>
-              {style}
+          <option value="">All Collections</option>
+          {collections.map((col) => (
+            <option key={col.id} value={col.id}>
+              {col.name}
             </option>
           ))}
         </select>
@@ -112,25 +117,28 @@ export default function SequencesPage() {
 
       {filteredSequences.length === 0 ? (
         <div className="empty-state">
-          {filterStyle
-            ? `No ${filterStyle} sequences yet`
+          {filterCollectionId
+            ? "No sequences in this collection yet"
             : "No sequences yet. Create your first one!"}
         </div>
       ) : (
         <div className="list-grid">
-          {filteredSequences.map((sequence) => (
-            <Link
-              key={sequence.id}
-              to={`/sequences/${sequence.id}`}
-              className="list-card"
-            >
-              <h3 className="list-card-name">{sequence.name}</h3>
-              <span className="list-card-style">{sequence.dance_style}</span>
-              {sequence.description && (
-                <p className="list-card-description">{sequence.description}</p>
-              )}
-            </Link>
-          ))}
+          {filteredSequences.map((sequence) => {
+            const col = collectionMap.get(sequence.collection_id);
+            return (
+              <Link
+                key={sequence.id}
+                to={`/sequences/${sequence.id}`}
+                className="list-card"
+              >
+                <h3 className="list-card-name">{sequence.name}</h3>
+                {col && <span className="list-card-style">{col.name}</span>}
+                {sequence.description && (
+                  <p className="list-card-description">{sequence.description}</p>
+                )}
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>

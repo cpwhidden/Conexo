@@ -1,24 +1,18 @@
 import uuid
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-DANCE_STYLE_CHOICES = Literal[
-    "Salsa", "Bachata", "Zouk", "Kizomba", "West Coast Swing", "Lambada"
-]
-
 
 class SequenceCreate(BaseModel):
+    collection_id: uuid.UUID
     name: str = Field(max_length=255)
     description: str | None = None
-    dance_style: DANCE_STYLE_CHOICES
 
 
 class SequenceUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     description: str | None = None
-    # dance_style is immutable - not included in update
 
 
 class SequenceMoveAdd(BaseModel):
@@ -56,10 +50,10 @@ class SequenceMoveResponse(BaseModel):
     id: uuid.UUID
     position: int
     move_id: uuid.UUID | None
-    move_name: str | None  # From the linked Move, or None for custom
+    move_name: str | None
     custom_name: str | None
     custom_beat_count: int | None
-    beat_count: int  # Derived: from Move or custom_beat_count
+    beat_count: int
     notes: str | None
 
     model_config = {"from_attributes": True}
@@ -67,9 +61,9 @@ class SequenceMoveResponse(BaseModel):
 
 class SequenceResponse(BaseModel):
     id: uuid.UUID
+    collection_id: uuid.UUID
     name: str
     description: str | None
-    dance_style: str
     date_last_opened: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -79,4 +73,4 @@ class SequenceResponse(BaseModel):
 
 class SequenceWithEntriesResponse(SequenceResponse):
     entries: list[SequenceMoveResponse]
-    total_beats: int  # Sum of all beat counts
+    total_beats: int

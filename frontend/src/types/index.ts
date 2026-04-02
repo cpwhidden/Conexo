@@ -209,9 +209,9 @@ export interface CollectionFilterCreate {
 // Sequences
 export interface Sequence {
   id: string;
+  collection_id: string;
   name: string;
   description: string | null;
-  dance_style: string;
   date_last_opened: string | null;
   created_at: string;
   updated_at: string;
@@ -234,9 +234,9 @@ export interface SequenceWithEntries extends Sequence {
 }
 
 export interface SequenceCreate {
+  collection_id: string;
   name: string;
   description?: string | null;
-  dance_style: DanceStyle;
 }
 
 export interface SequenceMoveAdd {

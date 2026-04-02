@@ -22,31 +22,27 @@ export default function SequenceDetailPage() {
 
   useEffect(() => {
     loadSequence();
-    loadMoves();
-    loadConnections();
   }, [sequenceId]);
 
   const loadSequence = async () => {
     try {
       const res = await client.get(`/sequences/${sequenceId}`);
-      setSequence(res.data);
+      const seq = res.data;
+      setSequence(seq);
       setEditForm({
-        name: res.data.name,
-        description: res.data.description || "",
+        name: seq.name,
+        description: seq.description || "",
       });
+      // Load moves and connections from the sequence's collection
+      const [movesRes, connsRes] = await Promise.all([
+        client.get(`/moves?collection_id=${seq.collection_id}`),
+        client.get(`/connections?collection_id=${seq.collection_id}`),
+      ]);
+      setAvailableMoves(movesRes.data);
+      setConnections(connsRes.data);
     } finally {
       setLoading(false);
     }
-  };
-
-  const loadMoves = async () => {
-    const res = await client.get("/moves");
-    setAvailableMoves(res.data);
-  };
-
-  const loadConnections = async () => {
-    const res = await client.get("/connections");
-    setConnections(res.data);
   };
 
   const handleAddEntry = async (e: React.FormEvent) => {
@@ -111,11 +107,6 @@ export default function SequenceDetailPage() {
   if (loading) return <div className="loading">Loading...</div>;
   if (!sequence) return <div className="loading">Sequence not found</div>;
 
-  // Filter moves to same dance style
-  const eligibleMoves = availableMoves.filter(
-    (m) => m.dance_style === sequence.dance_style
-  );
-
   // Find the last move entry (not custom) in the sequence
   const sortedEntries = [...sequence.entries].sort((a, b) => a.position - b.position);
   const lastMoveEntry = [...sortedEntries].reverse().find((e) => e.move_id !== null);
@@ -128,12 +119,12 @@ export default function SequenceDetailPage() {
       .map((c) => c.target_move_id)
   );
 
-  // Split eligible moves into connected and unconnected
+  // Split moves into connected and unconnected
   const connectedMoves = lastMoveId
-    ? eligibleMoves.filter((m) => validNextMoveIds.has(m.id))
-    : eligibleMoves; // If no last move, all are valid
+    ? availableMoves.filter((m) => validNextMoveIds.has(m.id))
+    : availableMoves;
   const unconnectedMoves = lastMoveId
-    ? eligibleMoves.filter((m) => !validNextMoveIds.has(m.id))
+    ? availableMoves.filter((m) => !validNextMoveIds.has(m.id))
     : [];
 
   return (
@@ -172,7 +163,6 @@ export default function SequenceDetailPage() {
           <>
             <div>
               <h2>{sequence.name}</h2>
-              <span className="detail-style">{sequence.dance_style}</span>
               <span className="detail-beats">{sequence.total_beats} beats</span>
               {sequence.description && (
                 <p className="detail-description">{sequence.description}</p>

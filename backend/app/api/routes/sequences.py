@@ -1,12 +1,13 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import nulls_last, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
+from app.models.collection import Collection, CollectionMove
 from app.models.connection import MoveConnection
 from app.models.move import Move
 from app.models.sequence import Sequence, SequenceMove
@@ -26,14 +27,13 @@ router = APIRouter(prefix="/sequences", tags=["sequences"])
 
 @router.get("", response_model=list[SequenceResponse])
 async def list_sequences(
-    dance_style: str | None = None,
+    collection_id: uuid.UUID | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Sequence).where(Sequence.user_id == current_user.id)
-    if dance_style is not None:
-        query = query.where(Sequence.dance_style == dance_style)
-    # Sort by date_last_opened descending, with nulls at the end
+    if collection_id is not None:
+        query = query.where(Sequence.collection_id == collection_id)
     query = query.order_by(nulls_last(Sequence.date_last_opened.desc()))
     result = await db.execute(query)
     return [SequenceResponse.model_validate(s) for s in result.scalars().all()]
@@ -45,6 +45,8 @@ async def create_sequence(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Verify collection belongs to user
+    await _verify_collection_owner(db, body.collection_id, current_user.id)
     sequence = Sequence(user_id=current_user.id, **body.model_dump())
     db.add(sequence)
     await db.flush()
@@ -58,11 +60,8 @@ async def get_sequence(
     db: AsyncSession = Depends(get_db),
 ):
     sequence = await _get_user_sequence(db, sequence_id, current_user.id)
-
-    # Update date_last_opened
     sequence.date_last_opened = datetime.now(timezone.utc).replace(tzinfo=None)
     await db.flush()
-
     return _build_sequence_response(sequence)
 
 
@@ -119,18 +118,13 @@ async def add_entry_to_sequence(
 
     move = None
     if body.move_id is not None:
-        # Verify the move exists and belongs to the current user
         move = await _get_user_move(db, body.move_id, current_user.id)
 
-        # Verify dance style matches
-        if move.dance_style != sequence.dance_style:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Move dance style '{move.dance_style}' does not match sequence dance style '{sequence.dance_style}'",
-            )
+        # Verify move is in the sequence's collection
+        await _verify_move_in_collection(db, body.move_id, sequence.collection_id)
 
-        # Validate connection to previous move (if any)
-        await _validate_connection(db, sequence, body.position, body.move_id, current_user.id)
+        # Validate connection to adjacent moves
+        await _validate_connection(db, sequence, body.position, body.move_id)
 
     sequence_move = SequenceMove(
         sequence_id=sequence_id,
@@ -171,7 +165,6 @@ async def update_sequence_entry(
     entry = await _get_sequence_entry(db, sequence_id, entry_id)
 
     if body.position is not None and body.position != entry.position:
-        # Check if new position is taken
         existing_position = await db.execute(
             select(SequenceMove).where(
                 SequenceMove.sequence_id == sequence_id,
@@ -185,9 +178,8 @@ async def update_sequence_entry(
                 detail=f"Position {body.position} is already taken",
             )
 
-        # If this is a move entry, validate connections at new position
         if entry.move_id is not None:
-            await _validate_connection(db, sequence, body.position, entry.move_id, current_user.id)
+            await _validate_connection(db, sequence, body.position, entry.move_id)
 
         entry.position = body.position
 
@@ -195,8 +187,6 @@ async def update_sequence_entry(
         entry.notes = body.notes
 
     await db.flush()
-
-    # Reload to get fresh data
     await db.refresh(entry)
     move = entry.move
     beat_count = move.beat_count if move else entry.custom_beat_count
@@ -249,20 +239,10 @@ async def upgrade_custom_entry(
             detail="Entry is already linked to a move",
         )
 
-    # Verify the move exists and belongs to the current user
     move = await _get_user_move(db, move_id, current_user.id)
+    await _verify_move_in_collection(db, move_id, sequence.collection_id)
+    await _validate_connection(db, sequence, entry.position, move_id)
 
-    # Verify dance style matches
-    if move.dance_style != sequence.dance_style:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Move dance style '{move.dance_style}' does not match sequence dance style '{sequence.dance_style}'",
-        )
-
-    # Validate connection at this position
-    await _validate_connection(db, sequence, entry.position, move_id, current_user.id)
-
-    # Upgrade the entry
     entry.move_id = move_id
     entry.custom_name = None
     entry.custom_beat_count = None
@@ -281,7 +261,6 @@ async def upgrade_custom_entry(
 
 
 def _build_sequence_response(sequence: Sequence) -> SequenceWithEntriesResponse:
-    """Build a full sequence response with entries and total beats."""
     entries = []
     total_beats = 0
 
@@ -309,9 +288,9 @@ def _build_sequence_response(sequence: Sequence) -> SequenceWithEntriesResponse:
 
     return SequenceWithEntriesResponse(
         id=sequence.id,
+        collection_id=sequence.collection_id,
         name=sequence.name,
         description=sequence.description,
-        dance_style=sequence.dance_style,
         date_last_opened=sequence.date_last_opened,
         created_at=sequence.created_at,
         updated_at=sequence.updated_at,
@@ -325,13 +304,8 @@ async def _validate_connection(
     sequence: Sequence,
     new_position: int,
     move_id: uuid.UUID,
-    user_id: uuid.UUID,
 ) -> None:
-    """
-    Validate that a move at the given position has valid connections
-    to adjacent move entries (skipping custom entries).
-    """
-    # Get all entries for this sequence
+    """Validate connections to adjacent moves using collection-scoped connections."""
     result = await db.execute(
         select(SequenceMove)
         .where(SequenceMove.sequence_id == sequence.id)
@@ -339,7 +313,6 @@ async def _validate_connection(
     )
     entries = list(result.scalars().all())
 
-    # Find the previous and next move entries (skip custom entries)
     prev_move_id = None
     next_move_id = None
 
@@ -348,13 +321,12 @@ async def _validate_connection(
             prev_move_id = entry.move_id
         elif entry.position > new_position and entry.move_id is not None:
             next_move_id = entry.move_id
-            break  # Only need the first one after
+            break
 
-    # Validate connection from previous move to this move
     if prev_move_id is not None:
         conn_result = await db.execute(
             select(MoveConnection).where(
-                MoveConnection.user_id == user_id,
+                MoveConnection.collection_id == sequence.collection_id,
                 MoveConnection.source_move_id == prev_move_id,
                 MoveConnection.target_move_id == move_id,
             )
@@ -365,11 +337,10 @@ async def _validate_connection(
                 detail="No valid connection from previous move to this move",
             )
 
-    # Validate connection from this move to next move
     if next_move_id is not None:
         conn_result = await db.execute(
             select(MoveConnection).where(
-                MoveConnection.user_id == user_id,
+                MoveConnection.collection_id == sequence.collection_id,
                 MoveConnection.source_move_id == move_id,
                 MoveConnection.target_move_id == next_move_id,
             )
@@ -379,6 +350,34 @@ async def _validate_connection(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No valid connection from this move to next move",
             )
+
+
+async def _verify_collection_owner(
+    db: AsyncSession, collection_id: uuid.UUID, user_id: uuid.UUID
+) -> Collection:
+    result = await db.execute(
+        select(Collection).where(Collection.id == collection_id, Collection.user_id == user_id)
+    )
+    collection = result.scalar_one_or_none()
+    if collection is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+    return collection
+
+
+async def _verify_move_in_collection(
+    db: AsyncSession, move_id: uuid.UUID, collection_id: uuid.UUID
+) -> None:
+    result = await db.execute(
+        select(CollectionMove).where(
+            CollectionMove.collection_id == collection_id,
+            CollectionMove.move_id == move_id,
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Move is not in this sequence's collection",
+        )
 
 
 async def _get_user_sequence(

@@ -17,7 +17,7 @@ class Sequence(Base):
     __tablename__ = "sequences"
     __table_args__ = (
         Index("ix_sequences_user_id", "user_id"),
-        Index("ix_sequences_user_dance_style", "user_id", "dance_style"),
+        Index("ix_sequences_collection_id", "collection_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -26,9 +26,11 @@ class Sequence(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
+    collection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("collections.id", ondelete="CASCADE"), nullable=False
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    dance_style: Mapped[str] = mapped_column(String(100), nullable=False)
     date_last_opened: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -36,6 +38,7 @@ class Sequence(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="sequences")  # noqa: F821
+    collection: Mapped["Collection"] = relationship()  # noqa: F821
     sequence_moves: Mapped[list["SequenceMove"]] = relationship(
         back_populates="sequence",
         lazy="selectin",
@@ -48,15 +51,12 @@ class SequenceMove(Base):
     __tablename__ = "sequence_moves"
     __table_args__ = (
         UniqueConstraint("sequence_id", "position", name="uq_sequence_position"),
-        # Either move_id OR custom_name must be set
         CheckConstraint(
             "(move_id IS NOT NULL AND custom_name IS NULL AND custom_beat_count IS NULL) OR "
             "(move_id IS NULL AND custom_name IS NOT NULL AND custom_beat_count IS NOT NULL)",
             name="ck_sequence_move_entry_type",
         ),
-        # Position must be positive
         CheckConstraint("position >= 1", name="ck_sequence_move_position_positive"),
-        # Custom beat count must be positive when set
         CheckConstraint(
             "custom_beat_count IS NULL OR custom_beat_count >= 0",
             name="ck_sequence_move_custom_beat_count",
@@ -73,7 +73,6 @@ class SequenceMove(Base):
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    # Either a reference to a real move, or a custom entry
     move_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("moves.id", ondelete="CASCADE"), nullable=True
     )
