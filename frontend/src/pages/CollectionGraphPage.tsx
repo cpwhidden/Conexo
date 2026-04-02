@@ -1737,26 +1737,49 @@ export default function CollectionGraphPage() {
 
     // Highlight edges: blue incoming, orange outgoing, dim unrelated
     // Skip if an edge is directly selected (keep its existing red-pink style)
-    setEdges((cur) =>
-      cur.map((e) => {
-        // If this edge is the selected edge, don't override its style
-        if (e.id === selectedEdgeId) return e;
+    setNodes((curNodes) => {
+      // Read current node positions to determine edge direction in focus mode
+      const nodePositions = new Map(curNodes.map((n) => [n.id, n.position]));
+      const centerPos = activeId ? nodePositions.get(activeId) : undefined;
 
-        const isOutgoing = activeNodeIds.has(e.source);
-        const isIncoming = activeNodeIds.has(e.target);
+      setEdges((cur) =>
+        cur.map((e) => {
+          if (e.id === selectedEdgeId) return e;
 
-        if (isOutgoing && isIncoming) {
-          // Self-loop or bidirectional through virtual nodes — use outgoing color
-          return { ...e, style: { stroke: "#FF8C42", strokeWidth: 2.5 } };
-        } else if (isOutgoing) {
-          return { ...e, style: { stroke: "#FF8C42", strokeWidth: 2.5 } };
-        } else if (isIncoming) {
-          return { ...e, style: { stroke: "#4A9EFF", strokeWidth: 2.5 } };
-        } else {
-          return { ...e, style: { stroke: "#555", strokeWidth: 1, opacity: 0.5 } };
-        }
-      })
-    );
+          if (layout === "focus" && centerPos) {
+            // In focus mode, determine direction by node x-position relative to center
+            const sourcePos = nodePositions.get(e.source);
+            const targetPos = nodePositions.get(e.target);
+
+            if (sourcePos && targetPos) {
+              // Right side of center = outgoing (orange), left side = incoming (blue)
+              const edgeMidX = (sourcePos.x + targetPos.x) / 2;
+              if (edgeMidX >= centerPos.x) {
+                return { ...e, style: { stroke: "#FF8C42", strokeWidth: 2.5 } };
+              } else {
+                return { ...e, style: { stroke: "#4A9EFF", strokeWidth: 2.5 } };
+              }
+            }
+            // Fallback for edges we can't position
+            return { ...e, style: { stroke: "#FF8C42", strokeWidth: 2 } };
+          }
+
+          const isOutgoing = activeNodeIds.has(e.source);
+          const isIncoming = activeNodeIds.has(e.target);
+
+          if (isOutgoing && isIncoming) {
+            return { ...e, style: { stroke: "#FF8C42", strokeWidth: 2.5 } };
+          } else if (isOutgoing) {
+            return { ...e, style: { stroke: "#FF8C42", strokeWidth: 2.5 } };
+          } else if (isIncoming) {
+            return { ...e, style: { stroke: "#4A9EFF", strokeWidth: 2.5 } };
+          } else {
+            return { ...e, style: { stroke: "#555", strokeWidth: 1, opacity: 0.5 } };
+          }
+        })
+      );
+      return curNodes; // Don't modify nodes
+    });
   }, [layout, selectedMove?.id, focusedMoveId, setNodes, setEdges, virtualToRealIdMap, selectedEdgeId]);
 
   // Add/remove preview edge when connection preview changes
