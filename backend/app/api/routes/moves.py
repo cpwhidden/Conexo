@@ -8,6 +8,7 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.collection import CollectionMove
 from app.models.move import Move
+from app.models.sequence import Sequence, SequenceMove
 from app.models.user import User
 from app.schemas.move import MoveCreate, MoveResponse, MoveUpdate
 
@@ -97,6 +98,23 @@ async def update_move(
         setattr(move, field, value)
     await db.flush()
     return MoveResponse.model_validate(move)
+
+
+@router.get("/{move_id}/usage")
+async def get_move_usage(
+    move_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return names of sequences that reference this move."""
+    await _get_user_move(db, move_id, current_user.id)
+    result = await db.execute(
+        select(Sequence.name)
+        .join(SequenceMove, SequenceMove.sequence_id == Sequence.id)
+        .where(SequenceMove.move_id == move_id)
+        .distinct()
+    )
+    return {"sequence_names": list(result.scalars().all())}
 
 
 @router.delete("/{move_id}", status_code=status.HTTP_204_NO_CONTENT)

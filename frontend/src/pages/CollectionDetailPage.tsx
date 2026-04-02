@@ -161,29 +161,33 @@ export default function CollectionDetailPage() {
         </div>
 
         {showAddForm && (
-          <form onSubmit={handleAddMove} className="inline-form">
-            <select
-              value={selectedMoveId}
-              onChange={(e) => setSelectedMoveId(e.target.value)}
-              required
-            >
-              <option value="">Select a move...</option>
-              {eligibleMoves.map((move) => (
-                <option key={move.id} value={move.id}>
-                  {move.name}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              placeholder="Notes (optional)"
-              value={moveNotes}
-              onChange={(e) => setMoveNotes(e.target.value)}
-            />
-            <button type="submit" className="btn btn-primary">
-              Add
-            </button>
-          </form>
+          eligibleMoves.length === 0 ? (
+            <p className="empty-state">All moves are already in this collection.</p>
+          ) : (
+            <form onSubmit={handleAddMove} className="inline-form">
+              <select
+                value={selectedMoveId}
+                onChange={(e) => setSelectedMoveId(e.target.value)}
+                required
+              >
+                <option value="">Select a move...</option>
+                {eligibleMoves.map((move) => (
+                  <option key={move.id} value={move.id}>
+                    {move.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                placeholder="Notes (optional)"
+                value={moveNotes}
+                onChange={(e) => setMoveNotes(e.target.value)}
+              />
+              <button type="submit" className="btn btn-primary">
+                Add
+              </button>
+            </form>
+          )
         )}
 
         {collection.moves.length === 0 ? (

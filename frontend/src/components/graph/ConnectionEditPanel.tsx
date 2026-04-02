@@ -24,6 +24,7 @@ export default function ConnectionEditPanel({
   const [flow, setFlow] = useState<number | null>(connection.flow);
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteSequenceWarnings, setDeleteSequenceWarnings] = useState<string[]>([]);
 
   // Reset form when connection changes
   useEffect(() => {
@@ -142,7 +143,12 @@ export default function ConnectionEditPanel({
           </button>
           <button
             className="btn btn-danger"
-            onClick={() => setShowDeleteConfirm(true)}
+            onClick={() => {
+              setShowDeleteConfirm(true);
+              client.get(`/connections/${connection.id}/usage`).then((res) =>
+                setDeleteSequenceWarnings(res.data.sequence_names || [])
+              ).catch(() => setDeleteSequenceWarnings([]));
+            }}
             disabled={saving}
           >
             Delete
@@ -153,11 +159,21 @@ export default function ConnectionEditPanel({
       {showDeleteConfirm && (
         <ConfirmModal
           title="Delete Connection"
-          message={`Delete the connection from "${sourceMove?.name}" to "${targetMove?.name}"?`}
+          message={
+            <>
+              <p>Delete the connection from "{sourceMove?.name}" to "{targetMove?.name}"?</p>
+              {deleteSequenceWarnings.length > 0 && (
+                <div className="modal-warning">
+                  <strong>Both moves appear in {deleteSequenceWarnings.length} sequence{deleteSequenceWarnings.length > 1 ? "s" : ""}:</strong>
+                  <ul>{deleteSequenceWarnings.map((name, i) => <li key={i}>{name}</li>)}</ul>
+                </div>
+              )}
+            </>
+          }
           confirmLabel="Delete"
           confirmVariant="danger"
           onConfirm={handleDelete}
-          onCancel={() => setShowDeleteConfirm(false)}
+          onCancel={() => { setShowDeleteConfirm(false); setDeleteSequenceWarnings([]); }}
         />
       )}
     </div>

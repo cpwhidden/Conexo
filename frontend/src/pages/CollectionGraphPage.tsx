@@ -1191,6 +1191,7 @@ export default function CollectionGraphPage() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [panelClosing, setPanelClosing] = useState(false);
   const [deleteConfirmMove, setDeleteConfirmMove] = useState<Move | null>(null);
+  const [deleteSequenceWarnings, setDeleteSequenceWarnings] = useState<string[]>([]);
   const [connectionPreview, setConnectionPreview] = useState<ConnectionPreview | null>(null);
 
   // Sync selected node and layout to URL (via replaceState, no React re-renders)
@@ -2214,7 +2215,14 @@ export default function CollectionGraphPage() {
                   setSelectedMove(null);
                 }}
                 onEditMove={handleEditMoveClick}
-                onDeleteMove={() => setDeleteConfirmMove(selectedMove)}
+                onDeleteMove={() => {
+                  if (selectedMove) {
+                    setDeleteConfirmMove(selectedMove);
+                    client.get(`/moves/${selectedMove.id}/usage`).then((res) =>
+                      setDeleteSequenceWarnings(res.data.sequence_names || [])
+                    ).catch(() => setDeleteSequenceWarnings([]));
+                  }
+                }}
                 closing={panelClosing}
               />
             )}
@@ -2284,12 +2292,23 @@ export default function CollectionGraphPage() {
         {deleteConfirmMove && (
           <ConfirmModal
             title="Delete Move"
-            message={`Delete "${deleteConfirmMove.name}" and all its connections? This cannot be undone.`}
+            message={
+              <>
+                <p>Delete "{deleteConfirmMove.name}" and all its connections? This cannot be undone.</p>
+                {deleteSequenceWarnings.length > 0 && (
+                  <div className="modal-warning">
+                    <strong>This move is used in {deleteSequenceWarnings.length} sequence{deleteSequenceWarnings.length > 1 ? "s" : ""}:</strong>
+                    <ul>{deleteSequenceWarnings.map((name, i) => <li key={i}>{name}</li>)}</ul>
+                    <p>Deleting will remove it from these sequences.</p>
+                  </div>
+                )}
+              </>
+            }
             confirmLabel="Delete"
             cancelLabel="Cancel"
             confirmVariant="danger"
             onConfirm={() => handleDeleteMoveConfirm(deleteConfirmMove.id)}
-            onCancel={() => setDeleteConfirmMove(null)}
+            onCancel={() => { setDeleteConfirmMove(null); setDeleteSequenceWarnings([]); }}
           />
         )}
       </div>

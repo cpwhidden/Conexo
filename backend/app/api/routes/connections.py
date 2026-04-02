@@ -1,13 +1,14 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.collection import Collection
 from app.models.connection import MoveConnection
+from app.models.sequence import Sequence, SequenceMove
 from app.models.user import User
 from app.schemas.connection import ConnectionCreate, ConnectionResponse, ConnectionUpdate
 
@@ -61,6 +62,31 @@ async def update_connection(
         setattr(conn, field, value)
     await db.flush()
     return ConnectionResponse.model_validate(conn)
+
+
+@router.get("/{connection_id}/usage")
+async def get_connection_usage(
+    connection_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return names of sequences that use both source and target moves of this connection."""
+    conn = await _get_user_connection(db, connection_id, current_user.id)
+    # Find sequences in the same collection that contain both moves
+    src_alias = SequenceMove.__table__.alias("src")
+    tgt_alias = SequenceMove.__table__.alias("tgt")
+    result = await db.execute(
+        select(Sequence.name)
+        .join(src_alias, src_alias.c.sequence_id == Sequence.id)
+        .join(tgt_alias, tgt_alias.c.sequence_id == Sequence.id)
+        .where(
+            Sequence.collection_id == conn.collection_id,
+            src_alias.c.move_id == conn.source_move_id,
+            tgt_alias.c.move_id == conn.target_move_id,
+        )
+        .distinct()
+    )
+    return {"sequence_names": list(result.scalars().all())}
 
 
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -725,6 +725,34 @@
   line-height: 1.5;
 }
 
+.modal-message p {
+  margin: 0 0 0.5rem 0;
+}
+
+.modal-warning {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(233, 69, 96, 0.1);
+  border: 1px solid rgba(233, 69, 96, 0.3);
+  border-radius: 6px;
+  color: #e94560;
+  font-size: 0.85rem;
+}
+
+.modal-warning ul {
+  margin: 0.4rem 0;
+  padding-left: 1.2rem;
+}
+
+.modal-warning li {
+  margin: 0.2rem 0;
+}
+
+.modal-warning p {
+  margin: 0.4rem 0 0 0;
+  color: #ccc;
+}
+
 .modal {
   background: #1a1a2e;
   border: 1px solid #333;

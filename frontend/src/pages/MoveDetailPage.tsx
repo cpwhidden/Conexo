@@ -5,6 +5,7 @@ import ConnectionList from "../components/ConnectionList";
 import MediaPlayer from "../components/MediaPlayer";
 import MediaUpload from "../components/MediaUpload";
 import CuesSection from "../components/CuesSection";
+import ConfirmModal from "../components/ConfirmModal";
 import type { Move, Media, Cue, Collection } from "../types";
 import { useMoves } from "../hooks/useMoves";
 
@@ -16,6 +17,8 @@ export default function MoveDetailPage() {
   const [cues, setCues] = useState<Cue[]>([]);
   const { moves: allMoves } = useMoves();
   const [moveCollections, setMoveCollections] = useState<Collection[]>([]);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteSequenceWarnings, setDeleteSequenceWarnings] = useState<string[]>([]);
 
   useEffect(() => {
     if (!moveId) return;
@@ -55,8 +58,14 @@ export default function MoveDetailPage() {
     );
   }, []);
 
-  const handleDelete = async () => {
-    if (!confirm("Delete this move? This cannot be undone.")) return;
+  const handleDeleteClick = () => {
+    setShowDeleteModal(true);
+    client.get(`/moves/${moveId}/usage`).then((res) =>
+      setDeleteSequenceWarnings(res.data.sequence_names || [])
+    ).catch(() => setDeleteSequenceWarnings([]));
+  };
+
+  const handleDeleteConfirm = async () => {
     await client.delete(`/moves/${moveId}`);
     navigate("/");
   };
@@ -79,7 +88,7 @@ export default function MoveDetailPage() {
           <Link to={`/moves/${moveId}/edit`} className="btn btn-secondary">
             Edit
           </Link>
-          <button onClick={handleDelete} className="btn btn-danger">
+          <button onClick={handleDeleteClick} className="btn btn-danger">
             Delete
           </button>
         </div>
@@ -229,6 +238,28 @@ export default function MoveDetailPage() {
         <h3>Connections</h3>
         <ConnectionList moveId={move.id} allMoves={allMoves} />
       </section>
+
+      {showDeleteModal && (
+        <ConfirmModal
+          title="Delete Move"
+          message={
+            <>
+              <p>Delete "{move.name}" and all its connections? This cannot be undone.</p>
+              {deleteSequenceWarnings.length > 0 && (
+                <div className="modal-warning">
+                  <strong>This move is used in {deleteSequenceWarnings.length} sequence{deleteSequenceWarnings.length > 1 ? "s" : ""}:</strong>
+                  <ul>{deleteSequenceWarnings.map((name, i) => <li key={i}>{name}</li>)}</ul>
+                  <p>Deleting will remove it from these sequences.</p>
+                </div>
+              )}
+            </>
+          }
+          confirmLabel="Delete"
+          confirmVariant="danger"
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => { setShowDeleteModal(false); setDeleteSequenceWarnings([]); }}
+        />
+      )}
     </div>
   );
 }
