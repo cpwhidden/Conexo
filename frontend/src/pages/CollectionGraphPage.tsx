@@ -25,7 +25,9 @@ import AddConnectionPanel, { type ConnectionPreview } from "../components/graph/
 import ConnectionEditPanel from "../components/graph/ConnectionEditPanel";
 import EditMovePanel from "../components/graph/EditMovePanel";
 import AdvancedSearchPanel from "../components/graph/AdvancedSearchPanel";
+import FilterPanel from "../components/graph/FilterPanel";
 import ConfirmModal from "../components/ConfirmModal";
+import { type Filters, DEFAULT_FILTERS, applyFilters } from "../utils/moveFilter";
 import CurvedEdge from "../components/graph/CurvedEdge";
 import AnimatedCurvedEdge from "../components/graph/AnimatedCurvedEdge";
 import { analyzeGraph } from "../utils/graphAnalysis";
@@ -1217,6 +1219,12 @@ export default function CollectionGraphPage() {
   const graphSearchRef = useRef<HTMLDivElement>(null);
   const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
 
+  // Collection filter state
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<Filters>({ ...DEFAULT_FILTERS });
+  const [activeFilterId, setActiveFilterId] = useState<string | null>(null);
+  const [activeFilterName, setActiveFilterName] = useState<string | null>(null);
+
   // Handle panel close with animation
   const handlePanelClose = useCallback(() => {
     setPanelClosing(true);
@@ -1340,14 +1348,30 @@ export default function CollectionGraphPage() {
     [moves]
   );
 
+  // Apply collection filter to moves
+  const isFilterActive = JSON.stringify(activeFilter) !== JSON.stringify(DEFAULT_FILTERS);
+  const filteredMoves = useMemo(() => {
+    if (!isFilterActive) return moves;
+    return applyFilters(moves, activeFilter);
+  }, [moves, activeFilter, isFilterActive]);
+  const filteredMoveIds = useMemo(
+    () => new Set(filteredMoves.map((m) => m.id)),
+    [filteredMoves]
+  );
+
   // Convert data to React Flow nodes and edges
   const { initialNodes, initialEdges } = useMemo(() => {
     if (!collection) return { initialNodes: [], initialEdges: [] };
 
-    const moveIdSet = new Set(collection.moves.map((m) => m.move_id));
+    const moveIdSet = new Set(
+      collection.moves
+        .filter((m) => filteredMoveIds.has(m.move_id))
+        .map((m) => m.move_id)
+    );
 
-    // Create nodes from moves
-    const flowNodes: Node[] = collection.moves.map((cm, index) => {
+    // Create nodes from moves (filtered by collection filter)
+    const filteredCollectionMoves = collection.moves.filter((cm) => moveIdSet.has(cm.move_id));
+    const flowNodes: Node[] = filteredCollectionMoves.map((cm, index) => {
       const move = moves.find((m) => m.id === cm.move_id);
       return {
         id: cm.move_id,
@@ -1398,7 +1422,7 @@ export default function CollectionGraphPage() {
       });
 
     return { initialNodes: flowNodes, initialEdges: flowEdges };
-  }, [collection, moves, connections, showPreview]);
+  }, [collection, moves, connections, showPreview, filteredMoveIds]);
 
   // Analyze graph structure for connected components and node degrees
   const graphAnalysis = useMemo(() => {
@@ -2057,6 +2081,16 @@ export default function CollectionGraphPage() {
         </div>
 
         <button
+          className={`btn-icon filter-toggle ${filterPanelOpen ? "active" : ""} ${isFilterActive ? "filter-active" : ""}`}
+          onClick={() => setFilterPanelOpen(!filterPanelOpen)}
+          title="Collection Filter"
+        >
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="1,1 19,1 12,10 12,16 8,18 8,10" />
+          </svg>
+        </button>
+
+        <button
           className={`btn-icon adv-search-toggle ${advancedSearchOpen ? "active" : ""}`}
           onClick={() => setAdvancedSearchOpen(!advancedSearchOpen)}
           title="Advanced Search"
@@ -2140,7 +2174,7 @@ export default function CollectionGraphPage() {
         )}
 
         {/* Disconnected subgraphs warning badge */}
-        {graphAnalysis.componentCount > 1 && (
+        {graphAnalysis.componentCount > 1 && !isFilterActive && (
           <button
             className={`disconnected-warning ${showComponentColors ? "active" : ""}`}
             onClick={() => setShowComponentColors(!showComponentColors)}
@@ -2150,7 +2184,14 @@ export default function CollectionGraphPage() {
           </button>
         )}
 
-        <span className="node-count">{moves.length} moves</span>
+        <span className="node-count">
+          {isFilterActive ? (
+            <span className="filter-count">{filteredMoves.length} of {moves.length}</span>
+          ) : (
+            moves.length
+          )}{" "}
+          moves
+        </span>
       </div>
       <div className="graph-container">
         {/* Empty state warnings */}
@@ -2264,7 +2305,7 @@ export default function CollectionGraphPage() {
         {/* Advanced Search Panel */}
         {advancedSearchOpen && (
           <AdvancedSearchPanel
-            moves={moves}
+            moves={filteredMoves}
             onSelectMove={(move) => {
               setAdvancedSearchOpen(false);
               if (layout === "focus") {
@@ -2285,6 +2326,24 @@ export default function CollectionGraphPage() {
               }
             }}
             onClose={() => setAdvancedSearchOpen(false)}
+          />
+        )}
+
+        {/* Collection Filter Panel */}
+        {filterPanelOpen && (
+          <FilterPanel
+            moves={moves}
+            collectionId={id!}
+            collectionTags={tags}
+            activeFilter={activeFilter}
+            activeFilterId={activeFilterId}
+            activeFilterName={activeFilterName}
+            onFilterChange={setActiveFilter}
+            onFilterIdChange={(fid, fname) => {
+              setActiveFilterId(fid);
+              setActiveFilterName(fname);
+            }}
+            onClose={() => setFilterPanelOpen(false)}
           />
         )}
 
