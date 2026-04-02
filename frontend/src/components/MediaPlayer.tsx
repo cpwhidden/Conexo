@@ -41,12 +41,12 @@ export default function MediaPlayer({
     client
       .get(`/media/${media.id}/url`)
       .then((res) => {
-        const mediaUrl = res.data.url;
+        let mediaUrl = res.data.url;
         if (mediaUrl.startsWith("/")) {
-          setUrl(`${API_BASE_URL}${mediaUrl}`);
-        } else {
-          setUrl(mediaUrl);
+          const token = localStorage.getItem("access_token");
+          mediaUrl = `${API_BASE_URL}${mediaUrl}${mediaUrl.includes("?") ? "&" : "?"}token=${token}`;
         }
+        setUrl(mediaUrl);
       })
       .catch(() => setUrl(null));
   }, [media.id]);

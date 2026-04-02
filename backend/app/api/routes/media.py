@@ -1,11 +1,14 @@
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.api.routes.moves import _get_user_move
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.move import Move
 from app.models.user import User
@@ -73,8 +76,40 @@ async def get_media_url(
     db: AsyncSession = Depends(get_db),
 ):
     media = await _get_user_media(db, media_id, current_user.id)
-    url = storage.generate_signed_url(media.gcs_key)
+    if settings.use_local_storage:
+        url = f"/api/media/{media_id}/file"
+    else:
+        url = storage.generate_signed_url(media.gcs_key)
     return MediaURLResponse(url=url, content_type=media.content_type)
+
+
+@router.get("/media/{media_id}/file")
+async def get_media_file(
+    media_id: uuid.UUID,
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Serve the actual media file with correct Content-Type.
+
+    Uses a query-string token for auth since <video src> can't send headers.
+    Starlette's FileResponse handles Range requests natively.
+    """
+    from app.core.security import decode_access_token
+    from app.services.user import get_user_by_id
+
+    user_id_str = decode_access_token(token)
+    if user_id_str is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    user = await get_user_by_id(db, uuid.UUID(user_id_str))
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    media = await _get_user_media(db, media_id, user.id)
+    file_path = Path(settings.local_storage_path) / media.gcs_key
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(file_path, media_type=media.content_type)
 
 
 @router.patch("/media/{media_id}", response_model=MediaResponse)

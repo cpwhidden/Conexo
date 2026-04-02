@@ -2175,7 +2175,6 @@ select optgroup {
   bottom: calc(100% + 8px);
   left: 0;
   right: 0;
-  height: 140px;
   border-radius: 8px;
   overflow: hidden;
   background: #000;
@@ -2186,10 +2185,55 @@ select optgroup {
 .graph-node-preview img,
 .graph-node-preview video {
   width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background: #000;
+  display: block;
   cursor: pointer;
+}
+
+.preview-play-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.preview-play-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.preview-mute-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(0, 0, 0, 0.4);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s;
+  padding: 0;
+  backdrop-filter: blur(4px);
+}
+
+.preview-mute-btn:hover {
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
 }
 
 /* Focus level controls */

@@ -2,6 +2,8 @@ import { memo, useEffect, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import client from "../../api/client";
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8888";
+
 interface MoveNodeData {
   move: {
     id: string;
@@ -30,6 +32,8 @@ function MoveNode({ data, selected }: NodeProps) {
   const [hovered, setHovered] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewType, setPreviewType] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const nodeData = data as unknown as MoveNodeData;
   const { move, focusPosition, onInfoClick, connectionStatus, componentIndex, showComponentColors, showPreview } = nodeData;
 
@@ -42,7 +46,12 @@ function MoveNode({ data, selected }: NodeProps) {
       return;
     }
     client.get(`/media/${move.cover_media_id}/url`).then((res) => {
-      setPreviewUrl(res.data.url);
+      let url = res.data.url as string;
+      if (url.startsWith("/")) {
+        const token = localStorage.getItem("access_token");
+        url = `${API_BASE_URL}${url}${url.includes("?") ? "&" : "?"}token=${token}`;
+      }
+      setPreviewUrl(url);
       setPreviewType(res.data.content_type || null);
     }).catch(() => { setPreviewUrl(null); setPreviewType(null); });
   }, [shouldShowPreview, move.cover_media_id]);
@@ -86,19 +95,59 @@ function MoveNode({ data, selected }: NodeProps) {
       onMouseLeave={() => setHovered(false)}
     >
       {previewUrl && (
-        <div className="graph-node-preview">
+        <div className="graph-node-preview nodrag nopan">
           {previewType?.startsWith("video/") ? (
-            <video
-              src={previewUrl}
-              muted
-              playsInline
-              loop
-              onClick={(e) => {
-                e.stopPropagation();
-                const vid = e.currentTarget;
-                if (vid.paused) vid.play(); else vid.pause();
-              }}
-            />
+            <>
+              <video
+                src={`${previewUrl}#t=0.001`}
+                muted={isMuted}
+                playsInline
+                loop
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const vid = e.currentTarget;
+                  if (vid.paused) vid.play(); else vid.pause();
+                }}
+              />
+              {!isPlaying && (
+                <button
+                  className="preview-play-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const vid = e.currentTarget.parentElement?.querySelector("video");
+                    if (vid) vid.play();
+                  }}
+                >
+                  ▶
+                </button>
+              )}
+              {isPlaying && (
+                <button
+                  className="preview-mute-btn"
+                  title={isMuted ? "Unmute" : "Mute"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMuted((m) => !m);
+                  }}
+                >
+                  {isMuted ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 5L6 9H2v6h4l5 4V5z" />
+                      <line x1="23" y1="9" x2="17" y2="15" />
+                      <line x1="17" y1="9" x2="23" y2="15" />
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 5L6 9H2v6h4l5 4V5z" />
+                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                    </svg>
+                  )}
+                </button>
+              )}
+            </>
           ) : (
             <img src={previewUrl} alt="" />
           )}
