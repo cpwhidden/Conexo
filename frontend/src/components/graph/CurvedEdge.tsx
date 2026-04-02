@@ -1,8 +1,9 @@
-import { BaseEdge, getBezierPath, type EdgeProps } from "@xyflow/react";
+import { BaseEdge, getSmoothStepPath, type EdgeProps } from "@xyflow/react";
 
 /**
- * Bezier curved edge with gentle, consistent curvature.
- * Uses a small fixed curvature so edges are mostly direct with a slight curve.
+ * Edge with gentle smooth-step routing.
+ * Uses getSmoothStepPath with a small border radius for slight curves
+ * instead of getBezierPath which creates wild arcs with distant nodes.
  */
 export default function CurvedEdge({
   id,
@@ -14,22 +15,15 @@ export default function CurvedEdge({
   targetY,
   style,
   markerEnd,
-  data,
 }: EdgeProps) {
-  const curveFactor = (data?.curveFactor as number) || 0;
-
-  // Gentle fixed curvature: slight curve regardless of distance
-  // curveFactor varies from -1 to 1 for minor variation between parallel edges
-  const curvature = 25 + curveFactor * 15;
-
-  const [edgePath] = getBezierPath({
+  const [edgePath] = getSmoothStepPath({
     sourceX,
     sourceY,
     sourcePosition,
     targetX,
     targetY,
     targetPosition,
-    curvature,
+    borderRadius: 20,
   });
 
   return (
