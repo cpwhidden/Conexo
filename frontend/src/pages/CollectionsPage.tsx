@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import client from "../api/client";
 import { DANCE_STYLES } from "../types";
-import type { Collection, CollectionCreate, DanceStyle } from "../types";
+import type { Collection, CollectionCreate, DanceStyle, Sequence } from "../types";
 
 export default function CollectionsPage() {
   const [collections, setCollections] = useState<Collection[]>([]);
+  const [sequences, setSequences] = useState<Sequence[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<CollectionCreate>({
@@ -22,8 +23,12 @@ export default function CollectionsPage() {
 
   const loadCollections = async () => {
     try {
-      const res = await client.get("/collections");
-      setCollections(res.data);
+      const [colRes, seqRes] = await Promise.all([
+        client.get("/collections"),
+        client.get("/sequences"),
+      ]);
+      setCollections(colRes.data);
+      setSequences(seqRes.data);
     } finally {
       setLoading(false);
     }
@@ -44,6 +49,12 @@ export default function CollectionsPage() {
       setSaving(false);
     }
   };
+
+  // Sequence counts per collection
+  const seqCountMap = new Map<string, number>();
+  for (const seq of sequences) {
+    seqCountMap.set(seq.collection_id, (seqCountMap.get(seq.collection_id) || 0) + 1);
+  }
 
   // Apply filter
   const filteredCollections = filterStyle
@@ -119,19 +130,39 @@ export default function CollectionsPage() {
         </div>
       ) : (
         <div className="list-grid">
-          {filteredCollections.map((collection) => (
-            <Link
-              key={collection.id}
-              to={`/collections/${collection.id}`}
-              className="list-card"
-            >
-              <h3 className="list-card-name">{collection.name}</h3>
-              <span className="list-card-style">{collection.dance_style}</span>
-              {collection.description && (
-                <p className="list-card-description">{collection.description}</p>
-              )}
-            </Link>
-          ))}
+          {filteredCollections.map((collection) => {
+            const seqCount = seqCountMap.get(collection.id) || 0;
+            return (
+              <div key={collection.id} className="list-card">
+                <Link to={`/collections/${collection.id}`} className="list-card-link">
+                  <h3 className="list-card-name">{collection.name}</h3>
+                  <span className="list-card-style">{collection.dance_style}</span>
+                  {collection.description && (
+                    <p className="list-card-description">{collection.description}</p>
+                  )}
+                </Link>
+                <div className="list-card-footer">
+                  <span className="list-card-meta">{collection.move_count} moves</span>
+                  <Link
+                    to={`/collections/${collection.id}/sequences`}
+                    className="list-card-seq-link"
+                    title={`${seqCount} sequence${seqCount !== 1 ? "s" : ""}`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="8" y1="6" x2="21" y2="6" />
+                      <line x1="8" y1="12" x2="21" y2="12" />
+                      <line x1="8" y1="18" x2="21" y2="18" />
+                      <line x1="3" y1="6" x2="3.01" y2="6" />
+                      <line x1="3" y1="12" x2="3.01" y2="12" />
+                      <line x1="3" y1="18" x2="3.01" y2="18" />
+                    </svg>
+                    {seqCount > 0 && <span className="list-card-seq-count">{seqCount}</span>}
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

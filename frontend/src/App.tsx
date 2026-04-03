@@ -37,7 +37,7 @@ function App() {
           <Route path="/collections/:id/tags" element={<CollectionTagsPage />} />
           <Route path="/collections/:id/learn" element={<LearnPage />} />
           <Route path="/collections/:id/learn/draw-connections" element={<DrawConnectionsPage />} />
-          <Route path="/sequences" element={<SequencesPage />} />
+          <Route path="/collections/:id/sequences" element={<SequencesPage />} />
           <Route path="/sequences/:sequenceId" element={<SequenceDetailPage />} />
         </Route>
       </Routes>

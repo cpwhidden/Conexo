@@ -101,7 +101,7 @@ export default function SequenceDetailPage() {
   const handleDelete = async () => {
     if (!confirm("Delete this sequence?")) return;
     await client.delete(`/sequences/${sequenceId}`);
-    navigate("/sequences");
+    navigate(sequence?.collection_id ? `/collections/${sequence.collection_id}/sequences` : "/");
   };
 
   if (loading) return <div className="loading">Loading...</div>;
@@ -312,7 +312,7 @@ export default function SequenceDetailPage() {
         )}
       </div>
 
-      <Link to="/sequences" className="back-link">
+      <Link to={sequence.collection_id ? `/collections/${sequence.collection_id}/sequences` : "/"} className="back-link">
         &larr; Back to Sequences
       </Link>
     </div>

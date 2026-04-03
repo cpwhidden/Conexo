@@ -35,7 +35,6 @@ export default function Layout() {
             {/* Desktop navigation */}
             <nav className="app-nav desktop-nav">
               <Link to="/collections">Collections</Link>
-              <Link to="/sequences">Sequences</Link>
               <span className="user-info">
                 {user.picture_url && (
                   <img
@@ -86,9 +85,6 @@ export default function Layout() {
               <div className="mobile-nav-links">
                 <Link to="/collections" onClick={() => setMenuOpen(false)}>
                   Collections
-                </Link>
-                <Link to="/sequences" onClick={() => setMenuOpen(false)}>
-                  Sequences
                 </Link>
               </div>
               <div className="mobile-nav-footer">

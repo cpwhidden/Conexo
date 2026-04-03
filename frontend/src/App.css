@@ -1560,10 +1560,52 @@ select:focus {
   color: #888;
 }
 
+.list-card-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
 .list-card-description {
   font-size: 0.85rem;
   color: #aaa;
   margin: 0.5rem 0 0;
+}
+
+.list-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #2a2a3e;
+}
+
+.list-card-meta {
+  font-size: 0.78rem;
+  color: #666;
+}
+
+.list-card-seq-link {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: #888;
+  text-decoration: none;
+  font-size: 0.8rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.list-card-seq-link:hover {
+  color: #e94560;
+  background: rgba(233, 69, 96, 0.1);
+}
+
+.list-card-seq-count {
+  font-weight: 600;
+  font-size: 0.75rem;
 }
 
 /* Inline forms */
