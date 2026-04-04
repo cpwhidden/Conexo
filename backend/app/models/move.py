@@ -81,8 +81,8 @@ class Move(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     beat_count: Mapped[int] = mapped_column(nullable=False)
-    difficulty: Mapped[int] = mapped_column(nullable=False)
-    familiarity: Mapped[int] = mapped_column(nullable=False)
+    difficulty: Mapped[int | None] = mapped_column(nullable=True)
+    familiarity: Mapped[int | None] = mapped_column(nullable=True)
     # Timing
     starting_beat: Mapped[int] = mapped_column(nullable=False)
     is_state: Mapped[bool] = mapped_column(

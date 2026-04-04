@@ -8,8 +8,8 @@ class MoveCreate(BaseModel):
     name: str = Field(max_length=255)
     description: str | None = None
     beat_count: int = Field(ge=0)
-    difficulty: int = Field(ge=0, le=10)
-    familiarity: int = Field(ge=0, le=10)
+    difficulty: int | None = Field(default=None, ge=0, le=10)
+    familiarity: int | None = Field(default=None, ge=0, le=10)
     starting_beat: int = Field(ge=1, le=8)
     is_state: bool = False
     key_egress: bool = False
@@ -68,8 +68,8 @@ class MoveResponse(BaseModel):
     name: str
     description: str | None
     beat_count: int
-    difficulty: int
-    familiarity: int
+    difficulty: int | None
+    familiarity: int | None
     starting_beat: int
     is_state: bool
     key_egress: bool
