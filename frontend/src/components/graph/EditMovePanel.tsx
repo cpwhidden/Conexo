@@ -276,7 +276,7 @@ export default function EditMovePanel({
 
   const renderOptionalSlider = (
     label: string,
-    field: "leadability" | "mental_availability" | "beat_energy" | "moderna_energy" | "sensual_energy" | "impact" | "learning_priority"
+    field: "difficulty" | "familiarity" | "leadability" | "mental_availability" | "beat_energy" | "moderna_energy" | "sensual_energy" | "impact" | "learning_priority"
   ) => {
     const value = form[field];
     return (
@@ -406,39 +406,9 @@ export default function EditMovePanel({
           {/* Stats */}
           <div className="form-section">
             <div className="form-section-title">Stats</div>
-            <label>
-              Difficulty (0-10) *
-              <div className="slider-row">
-                <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  value={form.difficulty ?? 5}
-                  onChange={(e) =>
-                    setForm({ ...form, difficulty: parseInt(e.target.value) })
-                  }
-                />
-                <span className="range-value">{form.difficulty}</span>
-                <span className="btn-icon-placeholder" />
-              </div>
-            </label>
+            {renderOptionalSlider("Difficulty", "difficulty")}
             {renderOptionalSlider("Leadability", "leadability")}
-            <label>
-              Familiarity (0-10) *
-              <div className="slider-row">
-                <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  value={form.familiarity ?? 1}
-                  onChange={(e) =>
-                    setForm({ ...form, familiarity: parseInt(e.target.value) })
-                  }
-                />
-                <span className="range-value">{form.familiarity}</span>
-                <span className="btn-icon-placeholder" />
-              </div>
-            </label>
+            {renderOptionalSlider("Familiarity", "familiarity")}
             {renderOptionalSlider("Mental Availability", "mental_availability")}
             {renderOptionalSlider("Learning Priority", "learning_priority")}
           </div>

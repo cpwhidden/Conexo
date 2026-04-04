@@ -336,7 +336,7 @@ export default function AddConnectionPanel({
 
   const renderOptionalSlider = (
     label: string,
-    field: "leadability" | "mental_availability" | "beat_energy" | "moderna_energy" | "sensual_energy" | "impact" | "learning_priority"
+    field: "difficulty" | "familiarity" | "leadability" | "mental_availability" | "beat_energy" | "moderna_energy" | "sensual_energy" | "impact" | "learning_priority"
   ) => {
     const value = newMoveForm[field];
     return (
@@ -488,45 +488,9 @@ export default function AddConnectionPanel({
           {/* Stats */}
           <div className="form-section">
             <div className="form-section-title">Stats</div>
-            <label>
-              Difficulty (0-10) *
-              <div className="slider-row">
-                <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  value={newMoveForm.difficulty}
-                  onChange={(e) =>
-                    setNewMoveForm({
-                      ...newMoveForm,
-                      difficulty: parseInt(e.target.value),
-                    })
-                  }
-                />
-                <span className="range-value">{newMoveForm.difficulty}</span>
-                <span className="btn-icon-placeholder" />
-              </div>
-            </label>
+            {renderOptionalSlider("Difficulty", "difficulty")}
             {renderOptionalSlider("Leadability", "leadability")}
-            <label>
-              Familiarity (0-10) *
-              <div className="slider-row">
-                <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  value={newMoveForm.familiarity}
-                  onChange={(e) =>
-                    setNewMoveForm({
-                      ...newMoveForm,
-                      familiarity: parseInt(e.target.value),
-                    })
-                  }
-                />
-                <span className="range-value">{newMoveForm.familiarity}</span>
-                <span className="btn-icon-placeholder" />
-              </div>
-            </label>
+            {renderOptionalSlider("Familiarity", "familiarity")}
             {renderOptionalSlider("Mental Availability", "mental_availability")}
             {renderOptionalSlider("Learning Priority", "learning_priority")}
           </div>
