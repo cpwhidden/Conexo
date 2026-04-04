@@ -557,7 +557,7 @@ export default function EditMovePanel({
               <span className="date-label">Date Learned</span>
               <div className="date-input-wrapper">
                 <input
-                  type="date"
+                  type="date" max="9999-12-31"
                   value={form.date_learned || ""}
                   onChange={(e) =>
                     setForm({ ...form, date_learned: e.target.value || null })
