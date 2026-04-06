@@ -14,12 +14,17 @@ CLOUD_SQL_INSTANCE="${PROJECT_ID}:${REGION}:conexo-db"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/${SERVICE_NAME}"
 TAG=$(git rev-parse --short HEAD 2>/dev/null || echo "manual")
 
+# Fetch Google Client ID from Secret Manager for frontend build
+GOOGLE_CLIENT_ID=$(gcloud secrets versions access latest --secret=CONEXO_GOOGLE_CLIENT_ID 2>/dev/null || echo "")
+
 echo "Deploying Conexo (tag: $TAG)..."
 echo ""
 
 # Step 1: Build
 echo "[1/4] Building Docker image..."
-docker build --platform linux/amd64 -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" .
+docker build --platform linux/amd64 \
+  --build-arg VITE_GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
+  -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" .
 
 # Step 2: Push
 echo "[2/4] Pushing to Artifact Registry..."
