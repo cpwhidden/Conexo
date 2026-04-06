@@ -22,6 +22,8 @@ frontend/dist
 # Environment and secrets
 .env
 .env.*
+**/.env
+**/.env.*
 
 # Documentation and non-runtime files
 *.md
