@@ -52,7 +52,7 @@ export default function FilterPanel({
   collectionTags,
   activeFilter,
   activeFilterId,
-  activeFilterName,
+  activeFilterName: _activeFilterName,
   onFilterChange,
   onFilterIdChange,
   onClose,

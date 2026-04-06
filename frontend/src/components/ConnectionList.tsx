@@ -5,11 +5,13 @@ import type { Connection, ConnectionCreate, Move } from "../types";
 interface ConnectionListProps {
   moveId: string;
   allMoves: Move[];
+  collectionId: string;
 }
 
 export default function ConnectionList({
   moveId,
   allMoves,
+  collectionId,
 }: ConnectionListProps) {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -44,8 +46,8 @@ export default function ConnectionList({
 
     const body: ConnectionCreate =
       direction === "outgoing"
-        ? { source_move_id: moveId, target_move_id: targetMoveId, label: label || null, flow }
-        : { source_move_id: targetMoveId, target_move_id: moveId, label: label || null, flow };
+        ? { collection_id: collectionId, source_move_id: moveId, target_move_id: targetMoveId, label: label || null, flow }
+        : { collection_id: collectionId, source_move_id: targetMoveId, target_move_id: moveId, label: label || null, flow };
 
     await client.post("/connections", body);
     setShowForm(false);

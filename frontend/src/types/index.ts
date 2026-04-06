@@ -83,8 +83,8 @@ export interface MoveUpdate {
   name?: string;
   description?: string | null;
   beat_count?: number;
-  difficulty?: number;
-  familiarity?: number;
+  difficulty?: number | null;
+  familiarity?: number | null;
   starting_beat?: number | null;
   is_state?: boolean;
   key_egress?: boolean;

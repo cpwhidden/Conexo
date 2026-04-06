@@ -236,7 +236,9 @@ export default function MoveDetailPage() {
 
       <section className="move-section">
         <h3>Connections</h3>
-        <ConnectionList moveId={move.id} allMoves={allMoves} />
+        {moveCollections.length > 0 && (
+          <ConnectionList moveId={move.id} allMoves={allMoves} collectionId={moveCollections[0].id} />
+        )}
       </section>
 
       {showDeleteModal && (

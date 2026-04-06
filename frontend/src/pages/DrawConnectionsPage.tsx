@@ -57,12 +57,12 @@ export default function DrawConnectionsPage() {
   const [allMoves, setAllMoves] = useState<MoveGraphData[]>([]);
   const [allConnections, setAllConnections] = useState<Connection[]>([]);
   const [nodeCount, setNodeCount] = useState(6);
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [score, setScore] = useState({ correct: 0, incorrect: 0, remaining: 0 });
   const [generated, setGenerated] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; type: "correct" | "incorrect" } | null>(null);
-  const feedbackTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const feedbackTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
 
   // Load collection data

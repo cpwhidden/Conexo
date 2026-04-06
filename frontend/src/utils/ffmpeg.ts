@@ -40,5 +40,5 @@ export async function trimVideo(
   await ffmpeg.deleteFile(inputName);
   await ffmpeg.deleteFile(outputName);
 
-  return new Blob([data], { type: file.type });
+  return new Blob([data as unknown as BlobPart], { type: file.type });
 }

@@ -633,7 +633,6 @@ function getRingLayoutElements(
 
   const stateIds = new Set(moves.filter((m) => m.is_state).map((m) => m.id));
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-  const moveMap = new Map(moves.map((m) => [m.id, m]));
   const virtualToRealId = new Map<string, string>();
 
   // Build adjacency: moveId → Set<moveId> (bidirectional)
@@ -856,7 +855,7 @@ interface CoreSimLink extends SimulationLinkDatum<CoreSimNode> {
 
 function getCoreLayoutElements(
   nodes: Node[],
-  edges: Edge[],
+  _edges: Edge[],
   connections: Connection[],
   moves: Move[],
   onExplore?: (move: Move) => void,
@@ -1011,14 +1010,13 @@ function getCoreLayoutElements(
 // other Core moves (which become leaf nodes in the subgraph).
 function getCoreExploreLayoutElements(
   nodes: Node[],
-  edges: Edge[],
+  _edges: Edge[],
   connections: Connection[],
   moves: Move[],
   exploreId: string,
   onInfoClick?: (move: Move) => void,
   onExplore?: (move: Move) => void
 ): Promise<{ nodes: Node[]; edges: Edge[] }> {
-  const NODE_W = 160;
   const coreIds = new Set(moves.filter((m) => m.is_core).map((m) => m.id));
   const collectionIds = new Set(nodes.map((n) => n.id));
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
@@ -1291,7 +1289,7 @@ export default function CollectionGraphPage() {
     const handleClickOutside = (e: MouseEvent) => {
       if (
         graphSearchRef.current &&
-        !graphSearchRef.current.contains(e.target as Node)
+        !graphSearchRef.current.contains(e.target as globalThis.Node)
       ) {
         setGraphSearchOpen(false);
       }
@@ -2047,7 +2045,7 @@ export default function CollectionGraphPage() {
   // Handle move save from edit panel
   const handleMoveSave = useCallback((updatedMove: Move) => {
     setMoves((prev) =>
-      prev.map((m) => (m.id === updatedMove.id ? updatedMove : m))
+      prev.map((m) => (m.id === updatedMove.id ? { ...m, ...updatedMove } : m))
     );
     setAllMoves((prev) =>
       prev.map((m) => (m.id === updatedMove.id ? updatedMove : m))
