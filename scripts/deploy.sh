@@ -19,7 +19,7 @@ echo ""
 
 # Step 1: Build
 echo "[1/4] Building Docker image..."
-docker build -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" .
+docker build --platform linux/amd64 -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" .
 
 # Step 2: Push
 echo "[2/4] Pushing to Artifact Registry..."
@@ -31,6 +31,8 @@ echo "[3/4] Running database migrations..."
 gcloud run jobs update conexo-migrate \
   --image "${IMAGE}:${TAG}" \
   --region "$REGION" \
+  --set-cloudsql-instances "$CLOUD_SQL_INSTANCE" \
+  --set-secrets "CONEXO_DATABASE_URL=CONEXO_DATABASE_URL:latest" \
   --quiet
 
 gcloud run jobs execute conexo-migrate \
