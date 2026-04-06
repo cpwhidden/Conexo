@@ -3,11 +3,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.collection import Collection
 from app.models.user import User
-
-# All dance styles that should have default collections
-DANCE_STYLES = ["Salsa", "Bachata", "Zouk", "Kizomba", "West Coast Swing", "Lambada"]
 
 
 async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
@@ -18,20 +14,6 @@ async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
 async def get_user_by_google_id(db: AsyncSession, google_id: str) -> User | None:
     result = await db.execute(select(User).where(User.google_id == google_id))
     return result.scalar_one_or_none()
-
-
-async def create_default_collections(db: AsyncSession, user_id: uuid.UUID) -> None:
-    """Create default collections for all dance styles for a new user."""
-    for style in DANCE_STYLES:
-        collection = Collection(
-            user_id=user_id,
-            name=f"All {style} Moves",
-            description=f"Default collection for {style} moves",
-            dance_style=style,
-            is_default=True,
-        )
-        db.add(collection)
-    await db.flush()
 
 
 async def upsert_user_from_google(
@@ -49,7 +31,6 @@ async def upsert_user_from_google(
         user.picture_url = picture_url
         return user
 
-    # Create new user
     user = User(
         google_id=google_id,
         email=email,
@@ -58,8 +39,4 @@ async def upsert_user_from_google(
     )
     db.add(user)
     await db.flush()
-
-    # Create default collections for the new user
-    await create_default_collections(db, user.id)
-
     return user

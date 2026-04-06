@@ -2,7 +2,7 @@ import { memo, useEffect, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import client from "../../api/client";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8888";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 interface MoveNodeData {
   move: {
