@@ -1,6 +1,8 @@
 import axios from "axios";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8888";
+// In production (Cloud Run), the API is served from the same origin.
+// In development, VITE_API_URL points to the local uvicorn server.
+const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 const client = axios.create({
   baseURL: `${API_BASE_URL}/api`,

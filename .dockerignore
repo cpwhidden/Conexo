@@ -1,0 +1,41 @@
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+backend/.venv
+backend/uploads
+
+# Node
+frontend/node_modules
+frontend/dist
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment and secrets
+.env
+.env.*
+
+# Documentation and non-runtime files
+*.md
+prd/
+claudedocs/
+.claude/
+.serena/
+backups/
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db

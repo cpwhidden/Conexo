@@ -1,0 +1,78 @@
+# ============================================================
+# Cloud Build pipeline for Conexo
+# Triggers: push to main branch
+# Steps: build image -> push to Artifact Registry -> deploy to Cloud Run -> run migrations
+# ============================================================
+
+substitutions:
+  _REGION: us-central1
+  _SERVICE_NAME: conexo
+  _REPO_NAME: conexo
+  _CLOUD_SQL_INSTANCE: ${PROJECT_ID}:us-central1:conexo-db
+
+steps:
+  # Step 1: Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:${SHORT_SHA}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:latest'
+      - '.'
+
+  # Step 2: Push the image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}'
+
+  # Step 3: Run Alembic migrations via Cloud Run Jobs
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud run jobs execute conexo-migrate \
+          --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:${SHORT_SHA} \
+          --region ${_REGION} \
+          --wait
+
+  # Step 4: Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - 'gcloud'
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}'
+      - '--image'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:${SHORT_SHA}'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-cloudsql-instances'
+      - '${_CLOUD_SQL_INSTANCE}'
+      - '--min-instances'
+      - '0'
+      - '--max-instances'
+      - '2'
+      - '--memory'
+      - '512Mi'
+      - '--cpu'
+      - '1'
+      - '--timeout'
+      - '300'
+      - '--concurrency'
+      - '80'
+      - '--set-env-vars'
+      - 'CONEXO_USE_LOCAL_STORAGE=false'
+
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:${SHORT_SHA}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
