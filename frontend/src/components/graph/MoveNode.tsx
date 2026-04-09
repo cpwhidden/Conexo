@@ -99,10 +99,10 @@ function MoveNode({ data, selected }: NodeProps) {
           {previewType?.startsWith("video/") ? (
             <>
               <video
-                src={`${previewUrl}#t=0.001`}
                 muted={isMuted}
                 playsInline
                 loop
+                preload="metadata"
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
                 onClick={(e) => {
@@ -110,7 +110,9 @@ function MoveNode({ data, selected }: NodeProps) {
                   const vid = e.currentTarget;
                   if (vid.paused) vid.play().catch(() => {}); else vid.pause();
                 }}
-              />
+              >
+                <source src={previewUrl} type={previewType || "video/mp4"} />
+              </video>
               {!isPlaying && (
                 <button
                   className="preview-play-btn"
