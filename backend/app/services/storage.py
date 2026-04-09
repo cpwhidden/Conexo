@@ -1,5 +1,4 @@
 import uuid
-from datetime import timedelta
 from pathlib import Path
 
 from app.core.config import settings
@@ -54,19 +53,12 @@ def upload_file(file_data: bytes, content_type: str, user_id: str) -> str:
     return key
 
 
-def generate_signed_url(key: str, expiration_minutes: int = 60) -> str:
+def generate_url(key: str) -> str:
     """Generate a URL for reading a file."""
     if _use_local():
-        # For local storage, return a path that the frontend can use
-        # This will be served by the backend at /api/uploads/{key}
         return f"/api/uploads/{key}"
     else:
-        blob = _get_bucket().blob(key)
-        return blob.generate_signed_url(
-            version="v4",
-            expiration=timedelta(minutes=expiration_minutes),
-            method="GET",
-        )
+        return f"https://storage.googleapis.com/{settings.gcs_bucket_name}/{key}"
 
 
 def delete_file(key: str) -> None:

@@ -79,7 +79,7 @@ async def get_media_url(
     if settings.use_local_storage:
         url = f"/api/media/{media_id}/file"
     else:
-        url = storage.generate_signed_url(media.gcs_key)
+        url = storage.generate_url(media.gcs_key)
     return MediaURLResponse(url=url, content_type=media.content_type)
 
 
