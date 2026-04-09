@@ -108,7 +108,7 @@ function MoveNode({ data, selected }: NodeProps) {
                 onClick={(e) => {
                   e.stopPropagation();
                   const vid = e.currentTarget;
-                  if (vid.paused) vid.play(); else vid.pause();
+                  if (vid.paused) vid.play().catch(() => {}); else vid.pause();
                 }}
               />
               {!isPlaying && (
@@ -117,7 +117,7 @@ function MoveNode({ data, selected }: NodeProps) {
                   onClick={(e) => {
                     e.stopPropagation();
                     const vid = e.currentTarget.parentElement?.querySelector("video");
-                    if (vid) vid.play();
+                    if (vid) vid.play().catch(() => {});
                   }}
                 >
                   ▶
