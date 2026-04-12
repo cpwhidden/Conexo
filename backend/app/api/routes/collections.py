@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import datetime, timezone
 
@@ -173,7 +174,11 @@ async def get_collection_graph_data(
     )
 
     move_ids = [cm.move_id for cm in collection.collection_moves]
+
     if move_ids:
+        # Run all independent queries in a single batch to minimize round-trips.
+        # SQLAlchemy async sessions are single-threaded, so we execute sequentially
+        # but combine the enrichment into one raw SQL query to reduce round-trips.
         moves_result = await db.execute(
             select(Move)
             .where(Move.id.in_(move_ids), Move.user_id == current_user.id)
@@ -184,54 +189,72 @@ async def get_collection_graph_data(
             )
         )
         move_objects = list(moves_result.scalars().all())
+
+        # Single query: connections + enrichment data via raw SQL
+        # This combines 4 separate queries into 1 round-trip
+        from sqlalchemy import text
+        enrichment_sql = text("""
+            SELECT 'conn' AS type, id::text, source_move_id::text AS key1, target_move_id::text AS key2,
+                   label, notes, flow::text, created_at::text, collection_id::text
+            FROM move_connections WHERE collection_id = :cid
+            UNION ALL
+            SELECT 'media' AS type, NULL, move_id::text, count(*)::text, NULL, NULL, NULL, NULL, NULL
+            FROM move_videos WHERE move_id = ANY(:mids) GROUP BY move_id
+            UNION ALL
+            SELECT 'tag' AS type, NULL, mt.move_id::text, t.name, NULL, NULL, NULL, NULL, NULL
+            FROM move_tags mt JOIN tags t ON mt.tag_id = t.id
+            WHERE mt.move_id = ANY(:mids) AND t.collection_id = :cid
+            UNION ALL
+            SELECT 'cue' AS type, NULL, move_id::text, description, NULL, NULL, NULL, NULL, NULL
+            FROM move_cues WHERE move_id = ANY(:mids)
+            UNION ALL
+            SELECT 'alltag' AS type, id::text, collection_id::text, name, NULL, NULL, NULL, created_at::text, NULL
+            FROM tags WHERE collection_id = :cid ORDER BY type, key1
+        """)
+        result = await db.execute(enrichment_sql, {"cid": collection_id, "mids": move_ids})
+        rows = result.all()
+
+        connection_objects = []
+        media_counts: dict[uuid.UUID, int] = {}
+        tag_names_map: dict[uuid.UUID, list[str]] = {}
+        cue_descs_map: dict[uuid.UUID, list[str]] = {}
+        all_tags = []
+
+        for row in rows:
+            rtype = row[0]
+            if rtype == "conn":
+                connection_objects.append(MoveConnection(
+                    id=uuid.UUID(row[1]),
+                    source_move_id=uuid.UUID(row[2]),
+                    target_move_id=uuid.UUID(row[3]),
+                    label=row[4],
+                    notes=row[5],
+                    flow=int(row[6]) if row[6] else None,
+                    created_at=datetime.fromisoformat(row[7]),
+                    collection_id=uuid.UUID(row[8]),
+                ))
+            elif rtype == "media":
+                media_counts[uuid.UUID(row[2])] = int(row[3])
+            elif rtype == "tag":
+                mid = uuid.UUID(row[2])
+                tag_names_map.setdefault(mid, []).append(row[3])
+            elif rtype == "cue":
+                mid = uuid.UUID(row[2])
+                cue_descs_map.setdefault(mid, []).append(row[3])
+            elif rtype == "alltag":
+                all_tags.append(TagResponse(
+                    id=uuid.UUID(row[1]),
+                    collection_id=uuid.UUID(row[2]),
+                    name=row[3],
+                    created_at=datetime.fromisoformat(row[7]),
+                ))
     else:
         move_objects = []
-
-    # Fetch connections scoped to this collection
-    if move_ids:
-        conn_result = await db.execute(
-            select(MoveConnection).where(
-                MoveConnection.collection_id == collection_id,
-            )
-        )
-        connection_objects = list(conn_result.scalars().all())
-    else:
         connection_objects = []
-
-    # Enrich moves with media counts, tag names, and cue descriptions
-    media_counts: dict[uuid.UUID, int] = {}
-    tag_names_map: dict[uuid.UUID, list[str]] = {}
-    cue_descs_map: dict[uuid.UUID, list[str]] = {}
-
-    if move_ids:
-        # Media counts
-        vc_result = await db.execute(
-            select(MoveVideo.move_id, func.count())
-            .where(MoveVideo.move_id.in_(move_ids))
-            .group_by(MoveVideo.move_id)
-        )
-        for mid, cnt in vc_result.all():
-            media_counts[mid] = cnt
-
-        # Tag names (collection-scoped)
-        tn_result = await db.execute(
-            select(MoveTag.move_id, Tag.name)
-            .join(Tag, MoveTag.tag_id == Tag.id)
-            .where(
-                MoveTag.move_id.in_(move_ids),
-                Tag.collection_id == collection_id,
-            )
-        )
-        for mid, tname in tn_result.all():
-            tag_names_map.setdefault(mid, []).append(tname)
-
-        # Cue descriptions
-        cd_result = await db.execute(
-            select(MoveCue.move_id, MoveCue.description)
-            .where(MoveCue.move_id.in_(move_ids))
-        )
-        for mid, desc in cd_result.all():
-            cue_descs_map.setdefault(mid, []).append(desc)
+        media_counts = {}
+        tag_names_map = {}
+        cue_descs_map = {}
+        all_tags = []
 
     # Connection counts
     outgoing_counts: dict[uuid.UUID, int] = {}
@@ -249,12 +272,6 @@ async def get_collection_graph_data(
         data.outgoing_connection_count = outgoing_counts.get(m.id, 0)
         data.incoming_connection_count = incoming_counts.get(m.id, 0)
         enriched_moves.append(data)
-
-    # Fetch all tags for the collection
-    tags_result = await db.execute(
-        select(Tag).where(Tag.collection_id == collection_id).order_by(Tag.name)
-    )
-    all_tags = [TagResponse.model_validate(t) for t in tags_result.scalars().all()]
 
     return CollectionGraphDataResponse(
         collection=collection_response,
