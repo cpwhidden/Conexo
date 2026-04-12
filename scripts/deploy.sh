@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # ============================================================
 # Conexo Manual Deploy Script
-# Use this for quick manual deploys (alternative to Cloud Build)
+# Builds, pushes, migrates (via Neon), and deploys to Cloud Run.
 # ============================================================
 set -euo pipefail
 
-PROJECT_ID="${GCP_PROJECT_ID:-conexo-prod}"
-REGION="${GCP_REGION:-us-central1}"
+PROJECT_ID="${GCP_PROJECT_ID:-conexo-dance}"
+REGION="${GCP_REGION:-asia-east1}"
 SERVICE_NAME="conexo"
 REPO_NAME="conexo"
-CLOUD_SQL_INSTANCE="${PROJECT_ID}:${REGION}:conexo-db"
 
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/${SERVICE_NAME}"
 TAG=$(git rev-parse --short HEAD 2>/dev/null || echo "manual")
@@ -31,12 +30,12 @@ echo "[2/4] Pushing to Artifact Registry..."
 docker push "${IMAGE}:${TAG}"
 docker push "${IMAGE}:latest"
 
-# Step 3: Run migrations
+# Step 3: Run migrations (directly against Neon from the Cloud Run job)
 echo "[3/4] Running database migrations..."
 gcloud run jobs update conexo-migrate \
   --image "${IMAGE}:${TAG}" \
   --region "$REGION" \
-  --set-cloudsql-instances "$CLOUD_SQL_INSTANCE" \
+  --clear-cloudsql-instances \
   --set-secrets "CONEXO_DATABASE_URL=CONEXO_DATABASE_URL:latest" \
   --quiet
 
@@ -51,7 +50,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --region "$REGION" \
   --platform managed \
   --allow-unauthenticated \
-  --set-cloudsql-instances "$CLOUD_SQL_INSTANCE" \
+  --clear-cloudsql-instances \
   --set-secrets "CONEXO_DATABASE_URL=CONEXO_DATABASE_URL:latest,CONEXO_JWT_SECRET_KEY=CONEXO_JWT_SECRET_KEY:latest,CONEXO_GOOGLE_CLIENT_ID=CONEXO_GOOGLE_CLIENT_ID:latest,CONEXO_GCS_BUCKET_NAME=CONEXO_GCS_BUCKET_NAME:latest,CONEXO_CORS_ORIGINS=CONEXO_CORS_ORIGINS:latest" \
   --set-env-vars "CONEXO_USE_LOCAL_STORAGE=false" \
   --min-instances 0 \
