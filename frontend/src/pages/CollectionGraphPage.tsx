@@ -488,6 +488,7 @@ function getFocusLayoutElements(
           data: {
             ...realNode.data,
             focusPosition: "left",
+            isColumnFirst: rowIndex === 0,
             realMoveId: vNode.realMoveId, // Store real ID for click handling
           },
         });
@@ -509,6 +510,7 @@ function getFocusLayoutElements(
           data: {
             ...realNode.data,
             focusPosition: "right",
+            isColumnFirst: rowIndex === 0,
             realMoveId: vNode.realMoveId, // Store real ID for click handling
           },
         });

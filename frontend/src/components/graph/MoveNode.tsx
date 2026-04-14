@@ -17,6 +17,7 @@ interface MoveNodeData {
   onAddConnection?: (move: MoveNodeData["move"]) => void;
   onExplore?: (move: MoveNodeData["move"]) => void;
   focusPosition?: "left" | "center" | "right" | null;
+  isColumnFirst?: boolean;
   onInfoClick?: (move: MoveNodeData["move"]) => void;
   showPreview?: boolean;
   // Graph analysis data
@@ -35,10 +36,11 @@ function MoveNode({ data, selected }: NodeProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const nodeData = data as unknown as MoveNodeData;
-  const { move, focusPosition, onInfoClick, connectionStatus, componentIndex, showComponentColors, showPreview } = nodeData;
+  const { move, focusPosition, isColumnFirst, onInfoClick, connectionStatus, componentIndex, showComponentColors, showPreview } = nodeData;
 
   // Fetch cover media URL for preview
-  const shouldShowPreview = showPreview && focusPosition === "center" && move.cover_media_id;
+  // Show on the center node OR on the first move in any column
+  const shouldShowPreview = showPreview && (focusPosition === "center" || isColumnFirst) && move.cover_media_id;
   useEffect(() => {
     if (!shouldShowPreview) {
       setPreviewUrl(null);
