@@ -3986,17 +3986,48 @@ select optgroup {
 }
 
 .tag-manager-name {
-  cursor: pointer;
   font-size: 0.95rem;
 }
 
-.tag-manager-name:hover {
+.tag-manager-row {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  text-decoration: none;
+}
+
+.tag-manager-row:hover .tag-manager-name {
   color: #e94560;
+}
+
+.tag-manager-count {
+  font-size: 0.82rem;
+  color: #888;
+  white-space: nowrap;
+}
+
+.tag-manager-move-link {
+  display: block;
 }
 
 .tag-manager-edit-input {
   flex: 1;
   margin-right: 0.5rem;
+}
+
+.page-header-meta {
+  font-size: 0.85rem;
+  color: #888;
+  margin-left: 0.75rem;
 }
 
 .btn-danger-icon {

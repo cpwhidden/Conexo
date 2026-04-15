@@ -180,9 +180,15 @@ export interface Tag {
   collection_id: string;
   name: string;
   created_at: string;
+  move_count?: number;
 }
 
 export interface TagCreate {
+  name: string;
+}
+
+export interface TaggedMove {
+  id: string;
   name: string;
 }
 

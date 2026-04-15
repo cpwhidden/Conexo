@@ -1,32 +1,34 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import client from "../api/client";
+import ConfirmModal from "../components/ConfirmModal";
 import type { Tag } from "../types";
-
-interface TagWithCount extends Tag {
-  move_count: number;
-}
 
 export default function CollectionTagsPage() {
   const { id } = useParams();
-  const [tags, setTags] = useState<TagWithCount[]>([]);
+  const navigate = useNavigate();
+  const [tags, setTags] = useState<Tag[]>([]);
   const [collectionName, setCollectionName] = useState("");
   const [newTagName, setNewTagName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [loading, setLoading] = useState(true);
+  const [deleteConfirmTag, setDeleteConfirmTag] = useState<Tag | null>(null);
 
-  useEffect(() => {
+  const loadTags = async () => {
     if (!id) return;
-    Promise.all([
+    const [colRes, tagsRes] = await Promise.all([
       client.get(`/collections/${id}`),
       client.get(`/collections/${id}/tags`),
-    ]).then(([colRes, tagsRes]) => {
-      setCollectionName(colRes.data.name);
-      // Tags don't have move_count from the API yet, set to 0 for now
-      setTags(tagsRes.data.map((t: Tag) => ({ ...t, move_count: 0 })));
-      setLoading(false);
-    });
+    ]);
+    setCollectionName(colRes.data.name);
+    setTags(tagsRes.data);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadTags();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const handleCreate = async () => {
@@ -43,21 +45,27 @@ export default function CollectionTagsPage() {
 
   const handleRename = async (tagId: string) => {
     const name = editValue.trim();
-    if (!name || !id) return;
+    if (!name || !id) {
+      setEditingId(null);
+      return;
+    }
     try {
       const res = await client.patch(`/collections/${id}/tags/${tagId}`, { name });
-      setTags((prev) => prev.map((t) => (t.id === tagId ? { ...t, ...res.data } : t)));
+      setTags((prev) =>
+        prev.map((t) => (t.id === tagId ? { ...t, ...res.data } : t))
+      );
       setEditingId(null);
       setEditValue("");
     } catch {
-      // duplicate or error
+      setEditingId(null);
     }
   };
 
-  const handleDelete = async (tagId: string) => {
-    if (!id) return;
-    await client.delete(`/collections/${id}/tags/${tagId}`);
-    setTags((prev) => prev.filter((t) => t.id !== tagId));
+  const handleDeleteConfirmed = async () => {
+    if (!id || !deleteConfirmTag) return;
+    await client.delete(`/collections/${id}/tags/${deleteConfirmTag.id}`);
+    setTags((prev) => prev.filter((t) => t.id !== deleteConfirmTag.id));
+    setDeleteConfirmTag(null);
   };
 
   if (loading) return <div className="loading">Loading...</div>;
@@ -81,7 +89,11 @@ export default function CollectionTagsPage() {
             if (e.key === "Enter") handleCreate();
           }}
         />
-        <button className="btn btn-primary" onClick={handleCreate} disabled={!newTagName.trim()}>
+        <button
+          className="btn btn-primary"
+          onClick={handleCreate}
+          disabled={!newTagName.trim()}
+        >
           Create
         </button>
       </div>
@@ -91,6 +103,7 @@ export default function CollectionTagsPage() {
       ) : (
         <div className="tag-manager-list">
           {tags
+            .slice()
             .sort((a, b) => a.name.localeCompare(b.name))
             .map((tag) => (
               <div key={tag.id} className="tag-manager-item">
@@ -106,22 +119,37 @@ export default function CollectionTagsPage() {
                     onBlur={() => handleRename(tag.id)}
                     autoFocus
                     className="tag-manager-edit-input"
+                    onClick={(e) => e.stopPropagation()}
                   />
                 ) : (
-                  <span
-                    className="tag-manager-name"
-                    onClick={() => {
-                      setEditingId(tag.id);
-                      setEditValue(tag.name);
-                    }}
-                    title="Click to rename"
+                  <button
+                    type="button"
+                    className="tag-manager-row"
+                    onClick={() => navigate(`/collections/${id}/tags/${tag.id}`)}
                   >
-                    {tag.name}
-                  </span>
+                    <span className="tag-manager-name">{tag.name}</span>
+                    <span className="tag-manager-count">
+                      {tag.move_count ?? 0} move{(tag.move_count ?? 0) !== 1 ? "s" : ""}
+                    </span>
+                  </button>
                 )}
                 <button
+                  className="btn-icon-small"
+                  title="Rename"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingId(tag.id);
+                    setEditValue(tag.name);
+                  }}
+                >
+                  ✎
+                </button>
+                <button
                   className="btn-icon btn-danger-icon"
-                  onClick={() => handleDelete(tag.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteConfirmTag(tag);
+                  }}
                   title="Delete tag"
                 >
                   &times;
@@ -129,6 +157,33 @@ export default function CollectionTagsPage() {
               </div>
             ))}
         </div>
+      )}
+
+      {deleteConfirmTag && (
+        <ConfirmModal
+          title="Delete Tag"
+          message={
+            <>
+              <p>
+                Delete the tag "<strong>{deleteConfirmTag.name}</strong>"?
+              </p>
+              {(deleteConfirmTag.move_count ?? 0) > 0 && (
+                <div className="modal-warning">
+                  <strong>
+                    {deleteConfirmTag.move_count} move
+                    {deleteConfirmTag.move_count !== 1 ? "s" : ""} will be
+                    untagged.
+                  </strong>
+                  <p>The moves themselves will not be deleted.</p>
+                </div>
+              )}
+            </>
+          }
+          confirmLabel="Delete"
+          confirmVariant="danger"
+          onConfirm={handleDeleteConfirmed}
+          onCancel={() => setDeleteConfirmTag(null)}
+        />
       )}
     </div>
   );

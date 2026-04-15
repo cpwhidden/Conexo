@@ -4,6 +4,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import CollectionDetailPage from "./pages/CollectionDetailPage";
 import CollectionGraphPage from "./pages/CollectionGraphPage";
 import CollectionTagsPage from "./pages/CollectionTagsPage";
+import TagDetailPage from "./pages/TagDetailPage";
 import DrawConnectionsPage from "./pages/DrawConnectionsPage";
 import LearnPage from "./pages/LearnPage";
 import CollectionsPage from "./pages/CollectionsPage";
@@ -35,6 +36,7 @@ function App() {
           <Route path="/collections/:id/moves" element={<CollectionDetailPage />} />
           <Route path="/collections/:id/graph" element={<CollectionGraphPage />} />
           <Route path="/collections/:id/tags" element={<CollectionTagsPage />} />
+          <Route path="/collections/:id/tags/:tagId" element={<TagDetailPage />} />
           <Route path="/collections/:id/learn" element={<LearnPage />} />
           <Route path="/collections/:id/learn/draw-connections" element={<DrawConnectionsPage />} />
           <Route path="/collections/:id/sequences" element={<SequencesPage />} />

@@ -1,15 +1,23 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.collection import Collection, CollectionMove
+from app.models.move import Move
 from app.models.tag import MoveTag, Tag
 from app.models.user import User
-from app.schemas.tag import MoveTagAdd, MoveTagResponse, TagCreate, TagResponse, TagUpdate
+from app.schemas.tag import (
+    MoveTagAdd,
+    MoveTagResponse,
+    TagCreate,
+    TagResponse,
+    TagUpdate,
+    TaggedMoveResponse,
+)
 
 router = APIRouter(tags=["tags"])
 
@@ -39,12 +47,48 @@ async def list_tags(
     db: AsyncSession = Depends(get_db),
 ):
     await _get_user_collection(db, collection_id, current_user.id)
+    # Left join with move_tags to compute move_count per tag
     result = await db.execute(
-        select(Tag)
+        select(Tag, func.count(MoveTag.id).label("move_count"))
+        .outerjoin(MoveTag, MoveTag.tag_id == Tag.id)
         .where(Tag.collection_id == collection_id)
+        .group_by(Tag.id)
         .order_by(Tag.name)
     )
-    return [TagResponse.model_validate(t) for t in result.scalars().all()]
+    return [
+        TagResponse(
+            id=tag.id,
+            collection_id=tag.collection_id,
+            name=tag.name,
+            created_at=tag.created_at,
+            move_count=move_count,
+        )
+        for tag, move_count in result.all()
+    ]
+
+
+@router.get(
+    "/collections/{collection_id}/tags/{tag_id}/moves",
+    response_model=list[TaggedMoveResponse],
+)
+async def get_tag_moves(
+    collection_id: uuid.UUID,
+    tag_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all moves tagged with a specific tag."""
+    await _get_user_collection(db, collection_id, current_user.id)
+    await _get_collection_tag(db, tag_id, collection_id)
+    result = await db.execute(
+        select(Move)
+        .join(MoveTag, MoveTag.move_id == Move.id)
+        .where(MoveTag.tag_id == tag_id)
+        .order_by(Move.name)
+    )
+    return [
+        TaggedMoveResponse(id=m.id, name=m.name) for m in result.scalars().all()
+    ]
 
 
 @router.post(

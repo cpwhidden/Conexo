@@ -17,6 +17,7 @@ class TagResponse(BaseModel):
     collection_id: uuid.UUID
     name: str
     created_at: datetime
+    move_count: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -29,5 +30,13 @@ class MoveTagResponse(BaseModel):
     id: uuid.UUID
     tag_id: uuid.UUID
     move_id: uuid.UUID
+
+    model_config = {"from_attributes": True}
+
+
+class TaggedMoveResponse(BaseModel):
+    """A move that has been tagged with a specific tag."""
+    id: uuid.UUID
+    name: str
 
     model_config = {"from_attributes": True}
