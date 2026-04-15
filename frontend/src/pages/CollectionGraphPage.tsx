@@ -1175,7 +1175,11 @@ export default function CollectionGraphPage() {
       }
     }
   }, [layout, focusedMoveId, moves]);
-  const [focusLevel, setFocusLevel] = useState(1);
+  const [focusLevel, setFocusLevel] = useState(() => {
+    const urlLevel = initialParams.current.get("level");
+    const parsed = urlLevel ? parseInt(urlLevel, 10) : NaN;
+    return Number.isFinite(parsed) && parsed >= 1 && parsed <= 5 ? parsed : 1;
+  });
   const [virtualToRealIdMap, setVirtualToRealIdMap] = useState<Map<string, string>>(new Map());
 
   // Core explore state: when set, Core view shows this move's reachable subgraph
@@ -1184,7 +1188,7 @@ export default function CollectionGraphPage() {
   const [coreShowDetail, setCoreShowDetail] = useState(false);
 
   // Focus preview state
-  const [showPreview, setShowPreview] = useState(false);
+  const [showPreview, setShowPreview] = useState(() => initialParams.current.get("preview") === "1");
 
   // Panel state
   const [selectedMove, setSelectedMove] = useState<Move | null>(null);
@@ -1196,18 +1200,20 @@ export default function CollectionGraphPage() {
   const [deleteSequenceWarnings, setDeleteSequenceWarnings] = useState<string[]>([]);
   const [connectionPreview, setConnectionPreview] = useState<ConnectionPreview | null>(null);
 
-  // Sync selected node and layout to URL (via replaceState, no React re-renders)
+  // Sync selected node, layout, level, and preview to URL (via replaceState, no React re-renders)
   useEffect(() => {
     const nodeId = layout === "focus" ? focusedMoveId : selectedMove?.id;
     const params = new URLSearchParams();
     if (nodeId) params.set("node", nodeId);
     if (layout !== "focus") params.set("layout", layout);
+    if (focusLevel !== 1) params.set("level", String(focusLevel));
+    if (showPreview) params.set("preview", "1");
     const newSearch = params.toString();
     const newUrl = newSearch ? `${window.location.pathname}?${newSearch}` : window.location.pathname;
     if (window.location.search !== (newSearch ? `?${newSearch}` : "")) {
       window.history.replaceState(null, "", newUrl);
     }
-  }, [selectedMove?.id, focusedMoveId, layout]);
+  }, [selectedMove?.id, focusedMoveId, layout, focusLevel, showPreview]);
 
   // Graph analysis state - toggle for showing component colors
   const [showComponentColors, setShowComponentColors] = useState(false);
