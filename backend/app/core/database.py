@@ -25,8 +25,17 @@ def _build_engine():
 
     else:
         clean_url = url
+        # Neon's pooled endpoint runs PgBouncer in transaction pooling mode,
+        # which is incompatible with asyncpg's server-side prepared statement
+        # cache. Disabling the cache is required when using `-pooler` hosts.
+        connect_args["statement_cache_size"] = 0
 
-    return create_async_engine(clean_url, echo=False, connect_args=connect_args)
+    return create_async_engine(
+        clean_url,
+        echo=False,
+        connect_args=connect_args,
+        pool_pre_ping=True,
+    )
 
 
 engine = _build_engine()

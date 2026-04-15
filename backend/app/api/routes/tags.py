@@ -46,15 +46,23 @@ async def list_tags(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await _get_user_collection(db, collection_id, current_user.id)
-    # Left join with move_tags to compute move_count per tag
+    # Inline the collection-ownership check via JOIN so the common case is a
+    # single round trip. Fall back to _get_user_collection only when empty,
+    # to distinguish 404 (no such collection) from [] (empty tag list).
     result = await db.execute(
         select(Tag, func.count(MoveTag.id).label("move_count"))
+        .join(Collection, Collection.id == Tag.collection_id)
         .outerjoin(MoveTag, MoveTag.tag_id == Tag.id)
-        .where(Tag.collection_id == collection_id)
+        .where(
+            Collection.id == collection_id,
+            Collection.user_id == current_user.id,
+        )
         .group_by(Tag.id)
         .order_by(Tag.name)
     )
+    rows = result.all()
+    if not rows:
+        await _get_user_collection(db, collection_id, current_user.id)
     return [
         TagResponse(
             id=tag.id,
@@ -63,7 +71,7 @@ async def list_tags(
             created_at=tag.created_at,
             move_count=move_count,
         )
-        for tag, move_count in result.all()
+        for tag, move_count in rows
     ]
 
 

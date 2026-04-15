@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PROJECT_ID="${GCP_PROJECT_ID:-conexo-dance}"
-REGION="${GCP_REGION:-asia-east1}"
+REGION="${GCP_REGION:-asia-southeast1}"
 SERVICE_NAME="conexo"
 REPO_NAME="conexo"
 
@@ -25,17 +25,30 @@ docker build --platform linux/amd64 \
   --build-arg VITE_GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
   -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" .
 
-# Step 2: Push
+# Step 2: Push (create Artifact Registry repo in the target region if missing)
 echo "[2/4] Pushing to Artifact Registry..."
+if ! gcloud artifacts repositories describe "$REPO_NAME" \
+    --project "$PROJECT_ID" --location "$REGION" >/dev/null 2>&1; then
+  echo "  Creating Artifact Registry repo '$REPO_NAME' in $REGION..."
+  gcloud artifacts repositories create "$REPO_NAME" \
+    --project "$PROJECT_ID" \
+    --location "$REGION" \
+    --repository-format docker \
+    --quiet
+  gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+fi
 docker push "${IMAGE}:${TAG}"
 docker push "${IMAGE}:latest"
 
 # Step 3: Run migrations (directly against Neon from the Cloud Run job)
+# Use `jobs deploy` (create-or-update) so this works for the first deploy
+# into a new region as well as subsequent runs.
 echo "[3/4] Running database migrations..."
-gcloud run jobs update conexo-migrate \
+gcloud run jobs deploy conexo-migrate \
   --image "${IMAGE}:${TAG}" \
   --region "$REGION" \
-  --clear-cloudsql-instances \
+  --command alembic \
+  --args upgrade,head \
   --set-secrets "CONEXO_DATABASE_URL=CONEXO_DATABASE_URL:latest" \
   --quiet
 

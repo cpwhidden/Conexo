@@ -22,13 +22,18 @@ async def list_cues(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await _get_user_move(db, move_id, current_user.id)
+    # Filter by user_id directly on MoveCue to skip the ownership round-trip
+    # in the common case. Only pay the _get_user_move check when empty, so we
+    # can still return 404 (rather than []) for moves the user doesn't own.
     result = await db.execute(
         select(MoveCue)
         .where(MoveCue.move_id == move_id, MoveCue.user_id == current_user.id)
         .order_by(MoveCue.beat, MoveCue.person, MoveCue.body_part)
     )
-    return [CueResponse.model_validate(c) for c in result.scalars().all()]
+    cues = list(result.scalars().all())
+    if not cues:
+        await _get_user_move(db, move_id, current_user.id)
+    return [CueResponse.model_validate(c) for c in cues]
 
 
 @router.post(
