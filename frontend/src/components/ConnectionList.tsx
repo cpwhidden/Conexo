@@ -26,9 +26,9 @@ export default function ConnectionList({
   const [editLabel, setEditLabel] = useState("");
 
   const loadConnections = useCallback(async () => {
-    const res = await client.get(`/connections/by-move/${moveId}`);
+    const res = await client.get(`/connections/by-move/${moveId}?collection_id=${collectionId}`);
     setConnections(res.data);
-  }, [moveId]);
+  }, [moveId, collectionId]);
 
   useEffect(() => {
     loadConnections();
