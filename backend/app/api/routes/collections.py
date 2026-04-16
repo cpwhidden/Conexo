@@ -212,7 +212,7 @@ async def get_collection_graph_data(
             SELECT 'cue' AS type, NULL, move_id::text, description, NULL, NULL, NULL, NULL, NULL
             FROM move_cues WHERE move_id = ANY(:mids)
             UNION ALL
-            SELECT 'alltag' AS type, id::text, collection_id::text, name, NULL, NULL, NULL, created_at::text, NULL
+            SELECT 'alltag' AS type, id::text, collection_id::text, name, NULL, NULL, NULL, created_at::text, updated_at::text
             FROM tags WHERE collection_id = :cid ORDER BY type, key1
         """)
         result = await db.execute(enrichment_sql, {"cid": collection_id, "mids": move_ids})
@@ -251,6 +251,7 @@ async def get_collection_graph_data(
                     collection_id=uuid.UUID(row[2]),
                     name=row[3],
                     created_at=datetime.fromisoformat(row[7]),
+                    updated_at=datetime.fromisoformat(row[8]),
                 ))
     else:
         move_objects = []
