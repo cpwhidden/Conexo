@@ -1144,6 +1144,7 @@ export default function CollectionGraphPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Read initial layout and node from URL (once, on mount)
   const initialParams = useRef(new URLSearchParams(window.location.search));
@@ -1310,6 +1311,7 @@ export default function CollectionGraphPage() {
   const loadGraphData = useCallback(async () => {
     if (!id) return;
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await client.get(`/collections/${id}/graph-data`);
       const { collection: col, moves: graphMoves, connections: graphConnections, tags: graphTags } = res.data;
@@ -1317,6 +1319,13 @@ export default function CollectionGraphPage() {
       setMoves(graphMoves);
       setConnections(graphConnections);
       setTags(graphTags || []);
+    } catch (err: any) {
+      const status = err.response?.status;
+      if (status === 404) {
+        setLoadError("This collection doesn't seem to exist. Maybe it was deleted, or the link is wrong.");
+      } else {
+        setLoadError("Something went wrong loading this collection. Try refreshing — if it keeps happening, it's a bug on our end.");
+      }
     } finally {
       setLoading(false);
     }
@@ -2068,6 +2077,19 @@ export default function CollectionGraphPage() {
 
   if (loading) {
     return <div className="loading">Loading graph...</div>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="error-page">
+        <div className="error-emoji">🫠</div>
+        <h2>Oops</h2>
+        <p>{loadError}</p>
+        <button className="btn btn-primary" onClick={() => window.location.reload()}>
+          Try Again
+        </button>
+      </div>
+    );
   }
 
   if (!collection) {
