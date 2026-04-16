@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, nulls_last, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import noload
+from sqlalchemy.orm import noload, selectinload
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
@@ -145,7 +145,22 @@ async def get_collection_graph_data(
     db: AsyncSession = Depends(get_db),
 ):
     """Return all data needed for the graph view in a single response."""
-    collection = await _get_user_collection(db, collection_id, current_user.id)
+    # Eagerly load collection_moves AND their associated Move objects in two
+    # batched SELECT-IN queries, eliminating the N+1 lazy-load on cm.move.name
+    # and the separate select(Move).where(id.in_(...)) that followed.
+    result = await db.execute(
+        select(Collection)
+        .where(Collection.id == collection_id, Collection.user_id == current_user.id)
+        .options(
+            selectinload(Collection.collection_moves).selectinload(CollectionMove.move),
+        )
+    )
+    collection = result.scalar_one_or_none()
+    if collection is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found"
+        )
+
     collection.date_last_opened = datetime.now(timezone.utc).replace(tzinfo=None)
     await db.flush()
 
@@ -173,22 +188,11 @@ async def get_collection_graph_data(
         moves=move_stubs,
     )
 
-    move_ids = [cm.move_id for cm in collection.collection_moves]
+    # Move objects are already loaded via the selectinload chain above
+    move_objects = [cm.move for cm in collection.collection_moves if cm.move is not None]
+    move_ids = [m.id for m in move_objects]
 
     if move_ids:
-        # Run all independent queries in a single batch to minimize round-trips.
-        # SQLAlchemy async sessions are single-threaded, so we execute sequentially
-        # but combine the enrichment into one raw SQL query to reduce round-trips.
-        moves_result = await db.execute(
-            select(Move)
-            .where(Move.id.in_(move_ids), Move.user_id == current_user.id)
-            .options(
-                noload(Move.videos),
-                noload(Move.outgoing_connections),
-                noload(Move.incoming_connections),
-            )
-        )
-        move_objects = list(moves_result.scalars().all())
 
         # Single query: connections + enrichment data via raw SQL
         # This combines 4 separate queries into 1 round-trip
