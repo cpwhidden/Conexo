@@ -1024,6 +1024,10 @@
   margin-top: 1rem;
 }
 
+.panel-media-grid {
+  grid-template-columns: 1fr;
+}
+
 .media-player {
   background: #1e1e2e;
   border: 1px solid #333;

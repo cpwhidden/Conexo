@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-import type { Move, MoveUpdate, Tag, Cue } from "../../types";
+import type { Move, MoveUpdate, Tag, Cue, Media } from "../../types";
 import client from "../../api/client";
 import CuesSection from "../CuesSection";
+import MediaUpload from "../MediaUpload";
+import MediaPlayer from "../MediaPlayer";
 import { useDropdownKeyNav } from "../../hooks/useDropdownKeyNav";
 
 interface EditMovePanelProps {
@@ -49,6 +51,10 @@ export default function EditMovePanel({
   // Cues state
   const [cues, setCues] = useState<Cue[]>([]);
 
+  // Media state
+  const [mediaItems, setMediaItems] = useState<Media[]>([]);
+  const [coverMediaId, setCoverMediaId] = useState<string | null>(move.cover_media_id ?? null);
+
   // Tag state (collection-scoped)
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [moveTags, setMoveTags] = useState<Tag[]>([]);
@@ -72,6 +78,7 @@ export default function EditMovePanel({
   // Load cues and tags
   useEffect(() => {
     client.get(`/moves/${move.id}/cues`).then((res) => setCues(res.data));
+    client.get(`/moves/${move.id}/media`).then((res) => setMediaItems(res.data));
     client.get(`/collections/${collectionId}/moves/${move.id}/tags`).then((res) => setMoveTags(res.data));
     client.get(`/collections/${collectionId}/tags`).then((res) => setAllTags(res.data));
   }, [move.id, collectionId]);
@@ -513,6 +520,40 @@ export default function EditMovePanel({
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Media */}
+          <div className="form-section">
+            <div className="form-section-title">Media ({mediaItems.length})</div>
+            <MediaUpload
+              moveId={move.id}
+              onUploaded={(media) => {
+                setMediaItems((prev) => [...prev, media]);
+                if (!coverMediaId) setCoverMediaId(media.id);
+              }}
+            />
+            {mediaItems.length > 0 && (
+              <div className="media-grid panel-media-grid">
+                {mediaItems.map((media) => (
+                  <MediaPlayer
+                    key={media.id}
+                    media={media}
+                    moveId={move.id}
+                    isCover={coverMediaId === media.id}
+                    onDelete={(mediaId) => {
+                      setMediaItems((prev) => prev.filter((m) => m.id !== mediaId));
+                      if (coverMediaId === mediaId) setCoverMediaId(null);
+                    }}
+                    onRenamed={(mediaId, newFilename) => {
+                      setMediaItems((prev) =>
+                        prev.map((m) => (m.id === mediaId ? { ...m, filename: newFilename } : m))
+                      );
+                    }}
+                    onSetCover={(mediaId) => setCoverMediaId(mediaId)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Styling */}
