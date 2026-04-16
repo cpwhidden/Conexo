@@ -80,8 +80,11 @@ export default function AddConnectionPanel({
   const [newMoveCues, setNewMoveCues] = useState<Cue[]>([]);
 
   // Tag state for new move form
+  // pendingTagNames tracks tags typed by the user that don't exist yet.
+  // They are only created in the DB when the move is actually submitted.
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
+  const [pendingTagNames, setPendingTagNames] = useState<Set<string>>(new Set());
   const [newMoveTagInput, setNewMoveTagInput] = useState("");
   const [showNewMoveTagSuggestions, setShowNewMoveTagSuggestions] = useState(false);
 
@@ -116,7 +119,8 @@ export default function AddConnectionPanel({
 
   const newMoveTagExactMatch = availableTags
     .filter((t) => !selectedTags.some((st) => st.id === t.id))
-    .find((t) => t.name.toLowerCase() === newMoveTagInput.toLowerCase());
+    .find((t) => t.name.toLowerCase() === newMoveTagInput.toLowerCase())
+    || selectedTags.find((t) => t.name.toLowerCase() === newMoveTagInput.trim().toLowerCase());
 
   const handleSelectTag = (tag: Tag) => {
     setSelectedTags((prev) => [...prev, tag]);
@@ -128,20 +132,22 @@ export default function AddConnectionPanel({
     setSelectedTags((prev) => prev.filter((t) => t.id !== tagId));
   };
 
-  const handleCreateTagForNewMove = async () => {
-    if (!newMoveTagInput.trim()) return;
-    try {
-      const createRes = await client.post(`/collections/${collectionId}/tags`, {
-        name: newMoveTagInput.trim(),
-      });
-      const newTag = createRes.data;
-      setAvailableTags((prev) => [...prev, newTag]);
-      setSelectedTags((prev) => [...prev, newTag]);
-      setNewMoveTagInput("");
-      setShowNewMoveTagSuggestions(false);
-    } catch (err) {
-      console.error("Failed to create tag:", err);
-    }
+  const handleCreateTagForNewMove = () => {
+    const name = newMoveTagInput.trim();
+    if (!name) return;
+    // Create a local-only placeholder tag. It will be persisted to the DB
+    // only when the move is actually submitted (in handleCreateMove).
+    const placeholder: Tag = {
+      id: `pending-${name}`,
+      collection_id: collectionId,
+      name,
+      created_at: "",
+      updated_at: "",
+    };
+    setSelectedTags((prev) => [...prev, placeholder]);
+    setPendingTagNames((prev) => new Set(prev).add(name));
+    setNewMoveTagInput("");
+    setShowNewMoveTagSuggestions(false);
   };
 
   // New move tag suggestions keyboard navigation
@@ -281,9 +287,17 @@ export default function AddConnectionPanel({
       const res = await client.post("/moves", payload);
       const newMoveId = res.data.id;
 
-      // Assign selected tags to the new move
+      // Assign selected tags to the new move.
+      // Pending tags (created locally) are persisted to the DB here.
       for (const tag of selectedTags) {
-        await client.post(`/collections/${collectionId}/tags/${tag.id}/moves`, { move_id: newMoveId });
+        let tagId = tag.id;
+        if (pendingTagNames.has(tag.name)) {
+          const createRes = await client.post(`/collections/${collectionId}/tags`, {
+            name: tag.name,
+          });
+          tagId = createRes.data.id;
+        }
+        await client.post(`/collections/${collectionId}/tags/${tagId}/moves`, { move_id: newMoveId });
       }
 
       // Create cues for the new move
