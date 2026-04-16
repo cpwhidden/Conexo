@@ -68,7 +68,7 @@ export default function CollectionTagsPage() {
     try {
       const res = await client.patch(`/collections/${id}/tags/${tagId}`, { name });
       setTags((prev) =>
-        prev.map((t) => (t.id === tagId ? { ...t, ...res.data } : t))
+        prev.map((t) => (t.id === tagId ? { ...t, ...res.data, move_count: t.move_count } : t))
       );
       setEditingId(null);
       setEditValue("");
