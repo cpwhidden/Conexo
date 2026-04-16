@@ -564,6 +564,13 @@
   text-decoration: underline;
 }
 
+.collection-tags-group-label {
+  display: inline-block;
+  color: #aaa;
+  font-size: 0.82rem;
+  margin-bottom: 0.35rem;
+}
+
 .themes-tag-container {
   display: flex;
   flex-wrap: wrap;

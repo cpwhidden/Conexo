@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import client from "../api/client";
 import CuesSection from "../components/CuesSection";
-import type { Cue, MoveCreate } from "../types";
+import type { Collection, Cue, MoveCreate, Tag } from "../types";
 
 export default function MoveFormPage() {
   const { moveId } = useParams();
@@ -38,11 +38,14 @@ export default function MoveFormPage() {
     collection_id: collectionIdFromUrl || undefined,
   });
   const [cues, setCues] = useState<Cue[]>([]);
+  const [moveCollections, setMoveCollections] = useState<Collection[]>([]);
+  const [collectionTags, setCollectionTags] = useState<Record<string, Tag[]>>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!moveId) return;
     client.get(`/moves/${moveId}/cues`).then((res) => setCues(res.data));
+    client.get(`/collections/by-move/${moveId}`).then((res) => setMoveCollections(res.data));
     client.get(`/moves/${moveId}`).then((res) => {
       const m = res.data;
       setForm({
@@ -70,6 +73,25 @@ export default function MoveFormPage() {
       });
     });
   }, [moveId]);
+
+  // Fetch tags for each collection this move belongs to
+  useEffect(() => {
+    if (!moveId || moveCollections.length === 0) return;
+    Promise.all(
+      moveCollections.map((col) =>
+        client.get(`/collections/${col.id}/moves/${moveId}/tags`).then((res) => ({
+          colId: col.id,
+          tags: res.data as Tag[],
+        }))
+      )
+    ).then((results) => {
+      const tagMap: Record<string, Tag[]> = {};
+      for (const { colId, tags } of results) {
+        tagMap[colId] = tags;
+      }
+      setCollectionTags(tagMap);
+    });
+  }, [moveId, moveCollections]);
 
   const handleIsStateChange = (checked: boolean) => {
     if (checked) {
@@ -155,6 +177,27 @@ export default function MoveFormPage() {
   return (
     <div className="move-form-page">
       <h2>{isEditing ? "Edit Move" : "New Move"}</h2>
+
+      {isEditing && moveCollections.length > 0 && (
+        <div className="move-themes-section">
+          <h4>Tags</h4>
+          {moveCollections.map((col) => {
+            const tags = collectionTags[col.id] || [];
+            if (tags.length === 0) return null;
+            return (
+              <div key={col.id} className="collection-tags-group">
+                <span className="collection-tags-group-label">{col.name}</span>
+                <div className="themes-tag-container">
+                  {tags.map((tag) => (
+                    <span key={tag.id} className="theme-tag">{tag.name}</span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="move-form">
         {/* Core Identity */}
         <label>
