@@ -1,8 +1,10 @@
 import uuid
 
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.allowed_email import AllowedEmail
 from app.models.user import User
 
 
@@ -30,6 +32,16 @@ async def upsert_user_from_google(
         user.name = name
         user.picture_url = picture_url
         return user
+
+    # Check if email is in the allowlist before creating a new user
+    allowed = await db.execute(
+        select(AllowedEmail).where(AllowedEmail.email == email)
+    )
+    if allowed.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your email is not authorized to use this app. Contact an admin.",
+        )
 
     user = User(
         google_id=google_id,

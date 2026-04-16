@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import auth, collections, connections, cues, filters, media, moves, sequences, tags
+from app.api.routes import admin, auth, collections, connections, cues, filters, media, moves, sequences, tags
 from app.core.config import settings
 
 app = FastAPI(title="Conexo", version="0.1.0")
@@ -27,6 +27,7 @@ app.include_router(sequences.router, prefix="/api")
 app.include_router(tags.router, prefix="/api")
 app.include_router(filters.router, prefix="/api")
 app.include_router(cues.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 
 
 @app.get("/api/health")

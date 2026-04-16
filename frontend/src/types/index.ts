@@ -15,6 +15,13 @@ export interface User {
   email: string;
   name: string;
   picture_url: string | null;
+  is_admin: boolean;
+  created_at: string;
+}
+
+export interface AllowedEmail {
+  id: string;
+  email: string;
   created_at: string;
 }
 

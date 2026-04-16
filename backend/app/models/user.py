@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String
+from sqlalchemy import Boolean, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,6 +23,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     picture_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     google_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
     moves: Mapped[list["Move"]] = relationship(back_populates="user", lazy="selectin")  # noqa: F821

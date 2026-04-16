@@ -35,6 +35,9 @@ export default function Layout() {
             {/* Desktop navigation */}
             <nav className="app-nav desktop-nav">
               <Link to="/collections">Collections</Link>
+              {user.is_admin && (
+                <Link to="/admin/allowed-emails">Admin</Link>
+              )}
               <span className="user-info">
                 {user.picture_url && (
                   <img
@@ -86,6 +89,11 @@ export default function Layout() {
                 <Link to="/collections" onClick={() => setMenuOpen(false)}>
                   Collections
                 </Link>
+                {user.is_admin && (
+                  <Link to="/admin/allowed-emails" onClick={() => setMenuOpen(false)}>
+                    Admin
+                  </Link>
+                )}
               </div>
               <div className="mobile-nav-footer">
                 <button onClick={logout} className="btn-logout">

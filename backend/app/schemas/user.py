@@ -13,6 +13,7 @@ class UserResponse(BaseModel):
     email: str
     name: str
     picture_url: str | None
+    is_admin: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -8,6 +8,7 @@ import TagDetailPage from "./pages/TagDetailPage";
 import DrawConnectionsPage from "./pages/DrawConnectionsPage";
 import LearnPage from "./pages/LearnPage";
 import CollectionsPage from "./pages/CollectionsPage";
+import AdminAllowedEmailsPage from "./pages/AdminAllowedEmailsPage";
 import LoginPage from "./pages/LoginPage";
 import MoveDetailPage from "./pages/MoveDetailPage";
 import MoveFormPage from "./pages/MoveFormPage";
@@ -41,6 +42,7 @@ function App() {
           <Route path="/collections/:id/learn/draw-connections" element={<DrawConnectionsPage />} />
           <Route path="/collections/:id/sequences" element={<SequencesPage />} />
           <Route path="/sequences/:sequenceId" element={<SequenceDetailPage />} />
+          <Route path="/admin/allowed-emails" element={<AdminAllowedEmailsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
