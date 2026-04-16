@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -58,7 +59,7 @@ async def list_tags(
             Collection.user_id == current_user.id,
         )
         .group_by(Tag.id)
-        .order_by(Tag.name)
+        .order_by(Tag.updated_at.desc())
     )
     rows = result.all()
     if not rows:
@@ -69,6 +70,7 @@ async def list_tags(
             collection_id=tag.collection_id,
             name=tag.name,
             created_at=tag.created_at,
+            updated_at=tag.updated_at,
             move_count=move_count,
         )
         for tag, move_count in rows
@@ -191,7 +193,7 @@ async def tag_move(
     db: AsyncSession = Depends(get_db),
 ):
     await _get_user_collection(db, collection_id, current_user.id)
-    await _get_collection_tag(db, tag_id, collection_id)
+    tag = await _get_collection_tag(db, tag_id, collection_id)
 
     # Validate move exists and is in the collection
     cm_result = await db.execute(
@@ -220,6 +222,7 @@ async def tag_move(
 
     move_tag = MoveTag(tag_id=tag_id, move_id=body.move_id)
     db.add(move_tag)
+    tag.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     await db.flush()
     return MoveTagResponse.model_validate(move_tag)
 
@@ -236,7 +239,7 @@ async def untag_move(
     db: AsyncSession = Depends(get_db),
 ):
     await _get_user_collection(db, collection_id, current_user.id)
-    await _get_collection_tag(db, tag_id, collection_id)
+    tag = await _get_collection_tag(db, tag_id, collection_id)
 
     result = await db.execute(
         select(MoveTag).where(
@@ -249,6 +252,7 @@ async def untag_move(
             status_code=status.HTTP_404_NOT_FOUND, detail="Move tag not found"
         )
     await db.delete(move_tag)
+    tag.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 @router.get(

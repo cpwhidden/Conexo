@@ -17,6 +17,7 @@ class TagResponse(BaseModel):
     collection_id: uuid.UUID
     name: str
     created_at: datetime
+    updated_at: datetime
     move_count: int = 0
 
     model_config = {"from_attributes": True}

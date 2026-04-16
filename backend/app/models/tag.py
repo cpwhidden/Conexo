@@ -27,6 +27,9 @@ class Tag(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        default=_utcnow, onupdate=_utcnow, nullable=False
+    )
 
     collection: Mapped["Collection"] = relationship(back_populates="tags")  # noqa: F821
     move_tags: Mapped[list["MoveTag"]] = relationship(

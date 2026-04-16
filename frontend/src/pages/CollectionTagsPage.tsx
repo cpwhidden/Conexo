@@ -102,10 +102,7 @@ export default function CollectionTagsPage() {
         <p className="empty-state">No tags yet. Create one above.</p>
       ) : (
         <div className="tag-manager-list">
-          {tags
-            .slice()
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map((tag) => (
+          {tags.map((tag) => (
               <div key={tag.id} className="tag-manager-item">
                 {editingId === tag.id ? (
                   <input
