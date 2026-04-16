@@ -6,7 +6,7 @@ import MediaPlayer from "../components/MediaPlayer";
 import MediaUpload from "../components/MediaUpload";
 import CuesSection from "../components/CuesSection";
 import ConfirmModal from "../components/ConfirmModal";
-import type { Move, Media, Cue, Collection } from "../types";
+import type { Move, Media, Cue, Collection, Tag } from "../types";
 import { useMoves } from "../hooks/useMoves";
 
 export default function MoveDetailPage() {
@@ -17,6 +17,7 @@ export default function MoveDetailPage() {
   const [cues, setCues] = useState<Cue[]>([]);
   const { moves: allMoves } = useMoves();
   const [moveCollections, setMoveCollections] = useState<Collection[]>([]);
+  const [collectionTags, setCollectionTags] = useState<Record<string, Tag[]>>({});
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteSequenceWarnings, setDeleteSequenceWarnings] = useState<string[]>([]);
 
@@ -27,6 +28,25 @@ export default function MoveDetailPage() {
     client.get(`/moves/${moveId}/cues`).then((res) => setCues(res.data));
     client.get(`/collections/by-move/${moveId}`).then((res) => setMoveCollections(res.data));
   }, [moveId]);
+
+  // Fetch tags for each collection this move belongs to
+  useEffect(() => {
+    if (!moveId || moveCollections.length === 0) return;
+    Promise.all(
+      moveCollections.map((col) =>
+        client.get(`/collections/${col.id}/moves/${moveId}/tags`).then((res) => ({
+          colId: col.id,
+          tags: res.data as Tag[],
+        }))
+      )
+    ).then((results) => {
+      const tagMap: Record<string, Tag[]> = {};
+      for (const { colId, tags } of results) {
+        tagMap[colId] = tags;
+      }
+      setCollectionTags(tagMap);
+    });
+  }, [moveId, moveCollections]);
 
   const handleMediaUploaded = useCallback((media: Media) => {
     setMediaItems((prev) => [...prev, media]);
@@ -178,22 +198,30 @@ export default function MoveDetailPage() {
         </div>
       )}
 
-      {/* Collections this move belongs to */}
+      {/* Collections this move belongs to, with tags */}
       {moveCollections.length > 0 && (
         <div className="move-themes-section">
           <h4>Collections</h4>
-          <div className="themes-tag-container">
-            {moveCollections.map((col) => (
-              <Link
-                key={col.id}
-                to={`/collections/${col.id}/graph?layout=focus&node=${move.id}`}
-                className="theme-tag"
-                style={{ textDecoration: "none" }}
-              >
-                {col.name}
-              </Link>
-            ))}
-          </div>
+          {moveCollections.map((col) => {
+            const tags = collectionTags[col.id] || [];
+            return (
+              <div key={col.id} className="collection-tags-group">
+                <Link
+                  to={`/collections/${col.id}/graph?layout=focus&node=${move.id}`}
+                  className="collection-tags-group-name"
+                >
+                  {col.name}
+                </Link>
+                {tags.length > 0 && (
+                  <div className="themes-tag-container">
+                    {tags.map((tag) => (
+                      <span key={tag.id} className="theme-tag">{tag.name}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

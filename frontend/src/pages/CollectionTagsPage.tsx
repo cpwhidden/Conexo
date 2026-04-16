@@ -4,6 +4,22 @@ import client from "../api/client";
 import ConfirmModal from "../components/ConfirmModal";
 import type { Tag } from "../types";
 
+function formatRelativeTime(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diffSec = Math.floor((now - then) / 1000);
+  if (diffSec < 60) return "just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 30) return `${diffDay}d ago`;
+  const diffMo = Math.floor(diffDay / 30);
+  if (diffMo < 12) return `${diffMo}mo ago`;
+  return `${Math.floor(diffMo / 12)}y ago`;
+}
+
 export default function CollectionTagsPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -125,8 +141,15 @@ export default function CollectionTagsPage() {
                     onClick={() => navigate(`/collections/${id}/tags/${tag.id}`)}
                   >
                     <span className="tag-manager-name">{tag.name}</span>
-                    <span className="tag-manager-count">
-                      {tag.move_count ?? 0} move{(tag.move_count ?? 0) !== 1 ? "s" : ""}
+                    <span className="tag-manager-meta">
+                      <span className="tag-manager-count">
+                        {tag.move_count ?? 0} move{(tag.move_count ?? 0) !== 1 ? "s" : ""}
+                      </span>
+                      {tag.updated_at && (
+                        <span className="tag-manager-date">
+                          {formatRelativeTime(tag.updated_at)}
+                        </span>
+                      )}
                     </span>
                   </button>
                 )}
