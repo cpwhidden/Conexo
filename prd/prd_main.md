@@ -1,7 +1,7 @@
 # Conexo - Product Requirements Document
 
-> **Last Updated**: 2026-03-19
-> **Version**: 1.7
+> **Last Updated**: 2026-05-23
+> **Version**: 1.8
 > **Status**: Active Development
 
 ---
@@ -18,6 +18,9 @@
 | Sequences | ✅ Implemented | Backend API complete with connection validation |
 | Themes | ✅ Implemented | Full CRUD, move grouping by theme |
 | Graph Visualization | ✅ Implemented | Multiple layouts (Focus, Dagre, Force, ELK, Ring, Core, Custom), connection highlighting, Core explore |
+| Collection Navigation | ✅ Implemented | Segment control (List / Flow / Graph / Learn / Tag); Flow is the default view |
+| Tag Selection (Flow) | ✅ Implemented | Activate a tag to see its moves as a left-to-right flow with L0–LX neighbors, green highlighting, tag-aware previews |
+| Media Tags | ✅ Implemented | One media item per tag per move; Flow preview prefers the tag's media |
 
 **Legend**: ✅ Implemented | 🚧 In Progress | 🔲 Not Started
 
@@ -185,6 +188,25 @@ Full CRUD operations for dance moves with rich metadata:
 | size_bytes | bigint | required | File size |
 | created_at | timestamp | auto | Upload time |
 
+### 3.3a Media Tag Entity (`media_tags` join table)
+
+Associates a collection tag with a single media item, scoped per move. Used so
+the Flow tag view can show a move's tag-specific media as its preview.
+
+| Field | Type | Constraints | Description |
+|-------|------|-------------|-------------|
+| id | UUID | PK, auto-generated | Unique identifier |
+| tag_id | UUID | FK → tags, cascade delete | Collection tag |
+| media_id | UUID | FK → move_videos, cascade delete | Media item |
+| move_id | UUID | FK → moves, cascade delete | Denormalized owner move |
+
+**Media Tag Rules**:
+- Unique constraint: `(tag_id, move_id)` — at most one media item per tag per
+  move ("one media per tag per move").
+- Re-assign on conflict: attaching a tag already on another media item of the
+  same move silently moves it to the new media item.
+- The tag must belong to a collection that the media's move is part of.
+
 ### 3.4 Connection Entity
 
 | Field | Type | Constraints | Description |
@@ -345,7 +367,8 @@ Currently supported dance styles (enum):
   3. Stats: Beat info, difficulty, familiarity
   4. Secondary stats: Optional scores (only shown if set)
   5. Key move badges (if flagged)
-  6. Tags (if present)
+  6. Tags (if present), grouped per collection. Each tag name is a link to that
+     collection's Flow view with the tag active (`/collections/:id/flow?tag=`).
   7. Leader styling (if present)
   8. Follower styling (if present)
   9. Learning notes (if present)
@@ -364,27 +387,53 @@ Currently supported dance styles (enum):
 - Empty state when no collections exist
 - Protected route
 
-### 5.6 Collection Detail Page (`/collections/:id/moves`)
-- **Header**: Name, dance style, edit/delete buttons, "View Graph" link
-- **Description** (if present)
+### 5.6 Collection Views & Segment Control
+
+All collection-scoped pages share a **segment control** (tab bar) shown beneath
+the collection name, replacing the old per-page back links and action buttons.
+Each view renders its own toolbar below the tab bar when needed.
+
+| Tab | Route | View |
+|-----|-------|------|
+| List | `/collections/:id/moves` | Moves list (5.6a) |
+| Flow | `/collections/:id/flow` | Focus-only graph (Section 9) |
+| Graph | `/collections/:id/graph` | All other graph layouts — deprecated (Section 9) |
+| Learn | `/collections/:id/learn` | Learning activities |
+| Tag | `/collections/:id/tags` | Tag manager |
+
+- `/collections/:id` redirects to **Flow** (the default view).
+- Collection name is shown inline with the segment control; back navigation to
+  the all-collections list is via the global app header (no per-page back link).
+
+#### 5.6a List View (`/collections/:id/moves`)
+- **Toolbar**: dance style, description, Add Move, Edit, Delete
 - **Moves List**: All moves in collection with cards
 - **Move Actions**: Remove from collection
 - **Add Moves**: Search and add existing moves of same dance style
 - Protected route
 
-### 5.7 Collection Graph Page (`/collections/:id/graph`)
-- **Default view** when opening a collection (`/collections/:id` redirects here)
-- **Header**: Back link to collection moves list, layout selector, node count
+### 5.7 Collection Flow / Graph Pages (`/collections/:id/flow`, `/collections/:id/graph`)
+- **Flow** is the default view (`/collections/:id` redirects to `/flow`); it
+  renders the Focus layout only (no layout selector). **Graph** keeps the other
+  layouts (Dagre, Force, ELK, Ring, Core, Custom) and is deprecated.
+- **Toolbar** (below the segment control): layout selector (Graph only), move/tag
+  search, filter, advanced search, plus Focus level/sort/preview controls.
 - **Graph Canvas**: Interactive React Flow visualization
 - **Controls**: Zoom, pan, fit view, mini-map
-- **Panels**: Move detail panel (slide-in), Edit Move panel (slide-in), Add connection panel (slide-in)
+- **Panels**: Move detail panel (slide-in, shows cover media above Timing),
+  Edit Move panel (slide-in), Add connection panel (slide-in)
 - **Node Features**:
   - Timing tag: red pill badge showing beat range (e.g., "5-8") or single beat for states (e.g., "4")
   - Selected nodes display full untruncated title
-  - Connection status indicators (entry point, dead end, isolated)
-- **Search**: Searchable dropdown with keyboard navigation (arrow keys, Enter, Escape) and clickable "more..." pagination (loads 20 more per click)
-- **Edit Move Panel**: Opens from node context; follows node selection changes (switching nodes auto-updates the panel). Includes theme association management.
-- See Section 9 for full Graph Visualization documentation
+  - Connection status indicators (entry point, dead end, isolated) drawn as
+    overlay edge bars so they remain visible on tagged (highlighted) nodes
+- **Search**: Searchable dropdown over moves and tags (Flow), keyboard navigation
+  (arrow keys, Enter, Escape), results sorted by last-updated, clickable "more..."
+  pagination (loads 20 more per click)
+- **Edit Move Panel**: Opens from node context; follows node selection changes
+  (switching nodes auto-updates the panel). Includes tag and media management.
+- See Section 9 for full Graph Visualization documentation, including Tag
+  selection (9.3)
 - Protected route
 
 ### 5.8 Themes List Page (`/themes`)
@@ -438,13 +487,18 @@ Currently supported dance styles (enum):
 - `key_egress` (boolean)
 - `key_ingress` (boolean)
 
-### 6.3 Videos
+### 6.3 Media (Videos/Images)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/moves/{id}/videos` | Upload video |
-| GET | `/api/moves/{id}/videos` | List move's videos |
-| GET | `/api/videos/{id}/url` | Get playable URL |
-| DELETE | `/api/videos/{id}` | Delete video |
+| POST | `/api/moves/{id}/media` | Upload media |
+| GET | `/api/moves/{id}/media` | List move's media |
+| GET | `/api/media/{id}/url` | Get playable URL |
+| PATCH | `/api/media/{id}` | Rename media |
+| PATCH | `/api/moves/{id}/cover-media/{mediaId}` | Set cover media |
+| DELETE | `/api/media/{id}` | Delete media |
+| GET | `/api/media/{id}/tags` | List tags attached to a media item |
+| POST | `/api/media/{id}/tags` | Attach a tag (re-assigns within the move); returns the media's tags |
+| DELETE | `/api/media/{id}/tags/{tagId}` | Detach a tag from a media item |
 
 ### 6.4 Connections
 | Method | Endpoint | Description |
@@ -461,7 +515,7 @@ Currently supported dance styles (enum):
 | GET | `/api/collections` | List all user's collections (with move_count) |
 | POST | `/api/collections` | Create collection |
 | GET | `/api/collections/{id}` | Get collection with moves (includes position data) |
-| GET | `/api/collections/{id}/graph-data` | Batch endpoint: collection + full moves + connections |
+| GET | `/api/collections/{id}/graph-data` | Batch endpoint: collection + full moves + connections + tags + media_tags |
 | PUT | `/api/collections/{id}` | Update collection (name, description only) |
 | DELETE | `/api/collections/{id}` | Delete collection |
 | POST | `/api/collections/{id}/moves` | Add move to collection |
@@ -609,9 +663,11 @@ Interactive node-link diagram for visualizing move connections within a collecti
 - **Selected Nodes**: Full untruncated title displayed
 
 #### Node Connection Indicators
-- **Entry Point** (green top border): No incoming connections
-- **Dead End** (orange bottom border): No outgoing connections
-- **Isolated** (dashed border): No connections at all
+Drawn as overlay edge bars (not borders) so they remain visible on tagged
+(green-highlighted) and focused nodes:
+- **Entry Point** (green left bar): No incoming connections
+- **Dead End** (orange right bar): No outgoing connections
+- **Isolated** (red left + right bars): No connections at all
 
 #### Disconnected Subgraph Detection
 - Union-Find algorithm analyzes graph connectivity
@@ -619,12 +675,17 @@ Interactive node-link diagram for visualizing move connections within a collecti
 - Click badge to highlight groups with different colors
 
 #### Focus Mode Features
-- **Default layout** when opening a collection
+- **Default layout** (the **Flow** view) when opening a collection
 - **Auto-select**: Randomly selects a node if none is focused
-- **Upside-down V pattern**: Center node positioned highest; L1 columns (direct connections) start one row lower; L2 columns (2-hop connections) start two rows lower; and so on for deeper levels
-- Center selected move with predecessors on left, successors on right
+- **Straight top row**: The focused move and every column's top move align to a
+  single row; nodes stack downward within each column (predecessors on the left,
+  successors on the right)
+- **Level control**: L0–L5. L0 shows only the focused move (no neighbors); each
+  level adds one more hop of predecessors/successors
 - Sort connected moves by: difficulty, familiarity, mental_availability, beat_energy, sensual_energy, date added, has learning notes
 - Ascending/descending toggle
+- Preview toggle: show cover media above column-top / focused nodes (capped at
+  360px; videos seek to `#t=0.1` so a real frame shows instead of black)
 - Click any node to re-focus on it
 - Info icon on hover for move details
 
@@ -663,13 +724,37 @@ Interactive node-link diagram for visualizing move connections within a collecti
 - **New Move Creation**: Inline form to create new move and add connection
 - **Connection Labels**: Optional label for the transition
 
+### 9.3 Tag Selection (Flow view)
+Selecting a tag turns the Flow view into a focused sub-graph of that tag.
+- **Activation**: Pick a tag from the move/tag search dropdown, click a tag name
+  in a move detail panel/page, or load `?tag=<tagId>`. A removable chip (green)
+  appears over the canvas; closing it returns to the regular Flow view focused
+  on the selected node. State persists in the URL (`?tag=`).
+- **Tagged-move layout**: All moves carrying the tag ("Level 0") are laid out
+  left-to-right in flow order (topological); each tagged move's predecessors fan
+  into the column to its left and successors to the column on its right.
+  Non-tagged neighbors expand by the L0–LX level control. Every edge connects
+  adjacent columns only (no arrows spanning the whole graph). A move appearing in
+  more than one column is duplicated; non-tagged neighbors appear once.
+- **Highlighting**: Tagged moves are filled/outlined green (`#22c55e`), matching
+  the chip. Tag→tag flow edges are green; predecessor (incoming) edges blue;
+  successor (outgoing) edges orange — applied to all tagged moves, not just the
+  focused one.
+- **Clicking a node** re-selects it as the focused node (the tag layout stays
+  put; the view does not re-center on each click).
+- **Search while a tag is active**: if the searched move is already shown, it
+  becomes the focused node; if not, the tag view closes and the move is shown as
+  the focused node in the normal Flow view.
+- **Preview**: when a tag is active, each tagged move's preview prefers the media
+  item marked with that tag (see Media Tags, 3.x / 6.x), falling back to cover.
+
 ### 9.2 Graph Technical Details
 - **React Flow**: Node and edge rendering
 - **Curved Edges**: Smart handle selection based on node positions
 - **Edge Animation**: Selected edges show animated flow
 - **Position Persistence**: Custom layout positions saved to backend
 - **MiniMap**: Overview navigation
-- **Batch Loading**: Single API call (`/graph-data`) fetches collection, moves, and connections
+- **Batch Loading**: Single API call (`/graph-data`) fetches collection, moves, connections, tags, and media_tags (per-move tag→media links for tag-aware previews)
 
 ---
 
@@ -735,6 +820,7 @@ prd/
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-05-23 | 1.8 | Added collection segment-control navigation (List/Flow/Graph/Learn/Tag) with Flow as the default view (5.6, 5.7). Added Tag Selection in the Flow view: tag chip, move/tag search, left-to-right tagged-move flow, green highlighting, L0–LX level control, tag-aware previews (9.3, 9.1). Added Media Tags: media_tags join table (3.3a), GET/POST/DELETE /media/{id}/tags, graph-data now returns tags + media_tags (6.3, 6.5, 9.2). Clickable tags in move detail (5.4). Cover media shown in graph detail panel. Connection-status indicators redrawn as overlay bars; focus layout uses a single straight top row; preview height capped and videos seek to #t=0.1 for a poster frame (9.1). Migration: media_tags table. |
 | 2026-03-19 | 1.7 | Added is_core field to Key Move Flags (3.2). Added video upload dialog with trim, rename, drag-and-drop zone, 0-byte detection (2.3, 6.3). Added video rename endpoint PATCH /videos/{id} (6.3). Added Ring layout and Core layout with Core Explore subview (9.1). Added connection highlighting: blue incoming, orange outgoing, 50% dim unrelated (9.1). Added background click to deselect (9.1). Migration: is_core column + batch update for States. |
 | 2026-03-13 | 1.6 | Added Themes feature (Section 2.7, 3.9-3.10, 5.8-5.9, 6.7, 8.5). Added Yoga dance style. Documented redirect-after-login (2.1, 5.1). Updated Collections: graph as default view, batch graph-data endpoint, list view route (2.5, 5.6, 5.7, 6.5). Updated Graph: Focus as default layout, auto-select, upside-down V pattern, timing tags, full title on selected nodes, keyboard navigation, paginated search, Edit Move panel follows selection (9.1). Added leader_styling to Move Notes (3.2). Added is_default/date_last_opened to Collection entity (3.5). Added graph libraries to tech stack (7.2). Added ensure-defaults/sync-defaults endpoints (6.5). |
 | 2026-02-12 | 1.5 | Added Graph Visualization documentation (Section 9): layouts (Dagre, Force, ELK, Focus, Custom), connection indicators, disconnected subgraph detection, Add Connection panel. Updated Collections with frontend features, default collections, position persistence. Added UI pages 5.5-5.7 for collections and graph. |
