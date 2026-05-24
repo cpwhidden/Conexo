@@ -3,17 +3,20 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.api.routes.moves import _get_user_move
 from app.core.config import settings
 from app.core.database import get_db
+from app.models.collection import Collection, CollectionMove
 from app.models.move import Move
+from app.models.tag import MediaTag, Tag
 from app.models.user import User
 from app.models.video import MoveVideo
 from app.schemas.media import MediaResponse, MediaUpdate, MediaURLResponse
+from app.schemas.tag import MediaTagAdd, TagResponse
 from app.services import storage
 
 router = APIRouter(tags=["media"])
@@ -181,3 +184,106 @@ async def _get_user_media(
             status_code=status.HTTP_404_NOT_FOUND, detail="Media not found"
         )
     return media
+
+
+# ─── Media tags ──────────────────────────────────────────────────────────────
+# A collection tag can mark a single media item per move. When that tag is
+# selected in the graph, the move's preview prefers the media marked with it.
+
+
+@router.get("/media/{media_id}/tags", response_model=list[TagResponse])
+async def list_media_tags(
+    media_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_user_media(db, media_id, current_user.id)
+    result = await db.execute(
+        select(Tag)
+        .join(MediaTag, MediaTag.tag_id == Tag.id)
+        .where(MediaTag.media_id == media_id)
+        .order_by(Tag.name)
+    )
+    return [TagResponse.model_validate(t) for t in result.scalars().all()]
+
+
+@router.post(
+    "/media/{media_id}/tags",
+    response_model=list[TagResponse],
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_media_tag(
+    media_id: uuid.UUID,
+    body: MediaTagAdd,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Attach a collection tag to a media item.
+
+    Enforces one-media-per-tag-per-move by re-assigning: any existing media tag
+    for (tag, move) is removed first. Returns the media's resulting tag list.
+    """
+    media = await _get_user_media(db, media_id, current_user.id)
+
+    # Verify the tag exists, is owned by the user, and belongs to a collection
+    # that this media's move is part of.
+    tag_result = await db.execute(
+        select(Tag)
+        .join(Collection, Collection.id == Tag.collection_id)
+        .where(Tag.id == body.tag_id, Collection.user_id == current_user.id)
+    )
+    tag = tag_result.scalar_one_or_none()
+    if tag is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found")
+
+    cm_result = await db.execute(
+        select(CollectionMove).where(
+            CollectionMove.collection_id == tag.collection_id,
+            CollectionMove.move_id == media.move_id,
+        )
+    )
+    if cm_result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tag's collection does not contain this media's move",
+        )
+
+    # Re-assign: drop any existing media tag for this (tag, move) pair.
+    await db.execute(
+        delete(MediaTag).where(
+            MediaTag.tag_id == body.tag_id, MediaTag.move_id == media.move_id
+        )
+    )
+    db.add(MediaTag(tag_id=body.tag_id, media_id=media_id, move_id=media.move_id))
+    await db.flush()
+
+    result = await db.execute(
+        select(Tag)
+        .join(MediaTag, MediaTag.tag_id == Tag.id)
+        .where(MediaTag.media_id == media_id)
+        .order_by(Tag.name)
+    )
+    return [TagResponse.model_validate(t) for t in result.scalars().all()]
+
+
+@router.delete(
+    "/media/{media_id}/tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def remove_media_tag(
+    media_id: uuid.UUID,
+    tag_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_user_media(db, media_id, current_user.id)
+    result = await db.execute(
+        select(MediaTag).where(
+            MediaTag.media_id == media_id, MediaTag.tag_id == tag_id
+        )
+    )
+    media_tag = result.scalar_one_or_none()
+    if media_tag is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Media tag not found"
+        )
+    await db.delete(media_tag)

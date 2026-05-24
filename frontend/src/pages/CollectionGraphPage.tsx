@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import CollectionTabBar from "../components/CollectionTabBar";
 import {
   ReactFlow,
   Background,
@@ -18,7 +19,7 @@ import dagre from "@dagrejs/dagre";
 import "@xyflow/react/dist/style.css";
 
 import client from "../api/client";
-import type { CollectionWithMoves, Connection, Move, MoveGraphData, Tag } from "../types";
+import type { CollectionWithMoves, Connection, MediaTagLink, Move, MoveGraphData, Tag } from "../types";
 import MoveNode from "../components/graph/MoveNode";
 import MoveDetailPanel from "../components/graph/MoveDetailPanel";
 import AddConnectionPanel, { type ConnectionPreview } from "../components/graph/AddConnectionPanel";
@@ -49,6 +50,13 @@ const edgeTypes = {
   curvedEdge: CurvedEdge,
   animatedCurvedEdge: AnimatedCurvedEdge,
 };
+
+// Edge highlight colors. Blue = incoming (a connection FROM a predecessor),
+// orange = outgoing (a connection TO a successor), green = the Level-0 flow
+// between two tagged moves (matches the tag chip / tagged-node color).
+const EDGE_BLUE = "#4A9EFF";
+const EDGE_ORANGE = "#FF8C42";
+const TAG_GREEN = "#22c55e";
 
 // Focus mode sort options
 const FOCUS_SORT_OPTIONS = [
@@ -285,63 +293,66 @@ function getFocusLayoutElements(
     return `${realMoveId}_L${level}_${side}`;
   };
 
-  // Build L1: direct connections to focused move
-  const l1PredecessorMoves = connections
-    .filter((c) => c.target_move_id === focusedMoveId && c.source_move_id !== focusedMoveId)
-    .map((c) => c.source_move_id);
+  // Build L1: direct connections to focused move. Skipped at L0 (the focused
+  // move is shown alone, with no neighbor expansion).
+  if (maxLevel >= 1) {
+    const l1PredecessorMoves = connections
+      .filter((c) => c.target_move_id === focusedMoveId && c.source_move_id !== focusedMoveId)
+      .map((c) => c.source_move_id);
 
-  const l1SuccessorMoves = connections
-    .filter((c) => c.source_move_id === focusedMoveId && c.target_move_id !== focusedMoveId)
-    .map((c) => c.target_move_id);
+    const l1SuccessorMoves = connections
+      .filter((c) => c.source_move_id === focusedMoveId && c.target_move_id !== focusedMoveId)
+      .map((c) => c.target_move_id);
 
-  // L1 sorts by UI criteria only
-  const sortedL1Left = sortMoves([...new Set(l1PredecessorMoves)]);
-  const sortedL1Right = sortMoves([...new Set(l1SuccessorMoves)]);
+    // L1 sorts by UI criteria only
+    const sortedL1Left = sortMoves([...new Set(l1PredecessorMoves)]);
+    const sortedL1Right = sortMoves([...new Set(l1SuccessorMoves)]);
 
-  // Track L1 moves
-  columnMoves.push({
-    left: new Set(sortedL1Left),
-    right: new Set(sortedL1Right),
-  });
-
-  // Create virtual nodes for L1
-  const l1LeftVirtualIds: string[] = [];
-  const l1RightVirtualIds: string[] = [];
-
-  sortedL1Left.forEach((realMoveId) => {
-    const virtualId = realMoveId; // First occurrence uses real ID
-    virtualNodes.set(virtualId, {
-      virtualId,
-      realMoveId,
-      level: 1,
-      side: "left",
-      parentVirtualId: focusedMoveId,
+    // Track L1 moves
+    columnMoves.push({
+      left: new Set(sortedL1Left),
+      right: new Set(sortedL1Right),
     });
-    virtualToRealId.set(virtualId, realMoveId);
-    l1LeftVirtualIds.push(virtualId);
-  });
 
-  sortedL1Right.forEach((realMoveId) => {
-    // Check if this move is already on the left side at L1
-    const existsOnLeft = columnMoves[0].left.has(realMoveId);
-    const virtualId = existsOnLeft ? createVirtualId(realMoveId, 1, "right") : realMoveId;
-    virtualNodes.set(virtualId, {
-      virtualId,
-      realMoveId,
-      level: 1,
-      side: "right",
-      parentVirtualId: focusedMoveId,
+    // Create virtual nodes for L1
+    const l1LeftVirtualIds: string[] = [];
+    const l1RightVirtualIds: string[] = [];
+
+    sortedL1Left.forEach((realMoveId) => {
+      const virtualId = realMoveId; // First occurrence uses real ID
+      virtualNodes.set(virtualId, {
+        virtualId,
+        realMoveId,
+        level: 1,
+        side: "left",
+        parentVirtualId: focusedMoveId,
+      });
+      virtualToRealId.set(virtualId, realMoveId);
+      l1LeftVirtualIds.push(virtualId);
     });
-    virtualToRealId.set(virtualId, realMoveId);
-    l1RightVirtualIds.push(virtualId);
-  });
 
-  levelColumns.push({
-    left: l1LeftVirtualIds,
-    right: l1RightVirtualIds,
-    leftParentOrder: new Map(),
-    rightParentOrder: new Map(),
-  });
+    sortedL1Right.forEach((realMoveId) => {
+      // Check if this move is already on the left side at L1
+      const existsOnLeft = columnMoves[0].left.has(realMoveId);
+      const virtualId = existsOnLeft ? createVirtualId(realMoveId, 1, "right") : realMoveId;
+      virtualNodes.set(virtualId, {
+        virtualId,
+        realMoveId,
+        level: 1,
+        side: "right",
+        parentVirtualId: focusedMoveId,
+      });
+      virtualToRealId.set(virtualId, realMoveId);
+      l1RightVirtualIds.push(virtualId);
+    });
+
+    levelColumns.push({
+      left: l1LeftVirtualIds,
+      right: l1RightVirtualIds,
+      leftParentOrder: new Map(),
+      rightParentOrder: new Map(),
+    });
+  }
 
   // Build L2+ levels
   for (let level = 2; level <= maxLevel; level++) {
@@ -446,12 +457,6 @@ function getFocusLayoutElements(
   // Track focus positions for each virtual node
   const focusPositions = new Map<string, "left" | "center" | "right">();
 
-  // Calculate total height needed to vertically center everything
-  let maxColumnHeight = 0;
-  levelColumns.forEach((col) => {
-    maxColumnHeight = Math.max(maxColumnHeight, col.left.length, col.right.length);
-  });
-
   // Build positioned nodes - create node instances for each virtual node
   const positionedNodes: Node[] = [];
 
@@ -480,7 +485,9 @@ function getFocusLayoutElements(
       const realNode = nodes.find((n) => n.id === vNode.realMoveId);
       if (realNode) {
         const x = CENTER_X - COLUMN_GAP * level;
-        const y = START_Y + level * ROW_GAP + rowIndex * ROW_GAP;
+        // Top move of every column aligns to a single row (straight line);
+        // nodes stack downward within the column.
+        const y = START_Y + rowIndex * ROW_GAP;
         positionedNodes.push({
           ...realNode,
           id: virtualId, // Use virtual ID
@@ -502,7 +509,9 @@ function getFocusLayoutElements(
       const realNode = nodes.find((n) => n.id === vNode.realMoveId);
       if (realNode) {
         const x = CENTER_X + COLUMN_GAP * level;
-        const y = START_Y + level * ROW_GAP + rowIndex * ROW_GAP;
+        // Top move of every column aligns to a single row (straight line);
+        // nodes stack downward within the column.
+        const y = START_Y + rowIndex * ROW_GAP;
         positionedNodes.push({
           ...realNode,
           id: virtualId, // Use virtual ID
@@ -611,6 +620,324 @@ function getFocusLayoutElements(
   }
 
   return { nodes: positionedNodes, edges: filteredEdges, focusPositions, virtualToRealId };
+}
+
+// ─── Tag Focus Layout ──────────────────────────────────────────────────────
+// Level 0: tagged moves are laid out in a single horizontal ROW, each in its
+// own column, ordered left→right by flow (topological order of the tagged
+// sub-graph) so connected tagged moves read as a left-to-right sequence.
+// Then we expand outward, one level at a time:
+//   - Predecessors of a move at column C are placed in column C-1 (left)
+//   - Successors  of a move at column C are placed in column C+1 (right)
+// A move is added to any target column at most once (dedup within column); the
+// same move may appear in multiple columns (duplication). Every edge connects
+// two ADJACENT columns, so arrows never span the whole graph. Tagged moves are
+// highlighted (yellow) on every instance.
+function getTagFocusLayoutElements(
+  nodes: Node[],
+  _edges: Edge[],
+  connections: Connection[],
+  moves: Move[],
+  taggedMoveIds: Set<string>,
+  sortBy: string,
+  sortAsc: boolean,
+  maxLevel: number,
+  showPreview: boolean
+): {
+  nodes: Node[];
+  edges: Edge[];
+  focusPositions: Map<string, "left" | "center" | "right">;
+  virtualToRealId: Map<string, string>;
+} {
+  const COL_GAP = 280;
+  const ROW_GAP = 80;
+  const START_Y = 0;
+  // A preview floats ABOVE its node (CSS: bottom: 100% + 8px) and is capped at
+  // 360px tall, so a preview-showing move needs this much clearance above it to
+  // avoid covering the move above it in the same column.
+  const PREVIEW_CLEARANCE = 380;
+
+  // Sorting (mirrors getFocusLayoutElements semantics)
+  const getMoveData = (id: string) => moves.find((m) => m.id === id);
+  const getSortValue = (moveId: string): number | string => {
+    const move = getMoveData(moveId);
+    if (!move) return 0;
+    switch (sortBy) {
+      case "difficulty": return move.difficulty ?? 0;
+      case "familiarity": return move.familiarity ?? 0;
+      case "mental_availability": return move.mental_availability ?? 0;
+      case "beat_energy": return move.beat_energy ?? 0;
+      case "sensual_energy": return move.sensual_energy ?? 0;
+      case "created_at": return move.created_at ?? "";
+      case "has_learning_notes": return move.learning_notes ? 1 : 0;
+      default: return move.difficulty ?? 0;
+    }
+  };
+  const compareMoves = (a: string, b: string): number => {
+    const valA = getSortValue(a);
+    const valB = getSortValue(b);
+    if (valA < valB) return sortAsc ? -1 : 1;
+    if (valA > valB) return sortAsc ? 1 : -1;
+    return 0;
+  };
+
+  // Adjacency lists (full graph).
+  const succOf = new Map<string, Set<string>>();
+  const predOf = new Map<string, Set<string>>();
+  for (const c of connections) {
+    if (c.source_move_id === c.target_move_id) continue;
+    if (!succOf.has(c.source_move_id)) succOf.set(c.source_move_id, new Set());
+    succOf.get(c.source_move_id)!.add(c.target_move_id);
+    if (!predOf.has(c.target_move_id)) predOf.set(c.target_move_id, new Set());
+    predOf.get(c.target_move_id)!.add(c.source_move_id);
+  }
+
+  // 1. Order tagged moves left→right by flow. Use a DFS reverse post-order
+  //    topological sort of the tagged sub-graph so connected chains stay
+  //    contiguous (A→B→C land in consecutive columns). Sources first, ties
+  //    broken by the active sort criterion. Each tagged move gets a UNIQUE
+  //    sequential column so they form a single row.
+  const taggedArr = [...taggedMoveIds];
+  const tagSucc = new Map<string, Set<string>>();
+  const tagInDeg = new Map<string, number>();
+  taggedArr.forEach((id) => {
+    tagSucc.set(id, new Set());
+    tagInDeg.set(id, 0);
+  });
+  for (const c of connections) {
+    if (c.source_move_id === c.target_move_id) continue;
+    if (taggedMoveIds.has(c.source_move_id) && taggedMoveIds.has(c.target_move_id)) {
+      const ss = tagSucc.get(c.source_move_id)!;
+      if (!ss.has(c.target_move_id)) {
+        ss.add(c.target_move_id);
+        tagInDeg.set(c.target_move_id, (tagInDeg.get(c.target_move_id) ?? 0) + 1);
+      }
+    }
+  }
+
+  const visited = new Set<string>();
+  const postOrder: string[] = [];
+  const dfs = (id: string) => {
+    if (visited.has(id)) return;
+    visited.add(id);
+    for (const s of [...(tagSucc.get(id) ?? [])].sort(compareMoves)) dfs(s);
+    postOrder.push(id);
+  };
+  // Sources (no tagged predecessor) first, in criterion order; then any leftover
+  // (e.g. members of a cycle) so every tagged move is placed.
+  const sources = taggedArr.filter((id) => (tagInDeg.get(id) ?? 0) === 0).sort(compareMoves);
+  for (const id of sources) dfs(id);
+  for (const id of taggedArr.slice().sort(compareMoves)) dfs(id);
+
+  const tagColumn = new Map<string, number>();
+  postOrder.reverse().forEach((id, idx) => tagColumn.set(id, idx));
+  const colCursor = postOrder.length;
+
+  // columnMoves[col] = Set<realMoveId> (dedup within column).
+  const columnMoves = new Map<number, Set<string>>();
+  let minCol = 0;
+  let maxCol = Math.max(0, colCursor - 1);
+
+  const ensureCol = (col: number) => {
+    if (!columnMoves.has(col)) columnMoves.set(col, new Set());
+    if (col < minCol) minCol = col;
+    if (col > maxCol) maxCol = col;
+    return columnMoves.get(col)!;
+  };
+
+  // The anchor move of each column (its tagged owner) — kept at row 0.
+  const columnAnchor = new Map<number, string>();
+
+  // Level 0: place each tagged move in its own column (a single top row).
+  taggedArr.forEach((id) => {
+    const col = tagColumn.get(id)!;
+    ensureCol(col).add(id);
+    columnAnchor.set(col, id);
+  });
+
+  interface EdgeSpec {
+    src: string;
+    srcCol: number;
+    tgt: string;
+    tgtCol: number;
+    conn: Connection;
+    // "flow": tagged→tagged (Level 0 sequence). "incoming": predecessor side.
+    // "outgoing": successor side. Drives edge color (green / blue / orange).
+    kind: "flow" | "incoming" | "outgoing";
+  }
+  const edgeSpecs: EdgeSpec[] = [];
+
+  const connLookup = new Map<string, Connection>();
+  for (const c of connections) connLookup.set(`${c.source_move_id}|${c.target_move_id}`, c);
+
+  // Predecessor BFS — fan LEFT from every tagged move at its column.
+  let frontier: Array<{ id: string; col: number }> = taggedArr.map((id) => ({ id, col: tagColumn.get(id)! }));
+  for (let L = 1; L <= maxLevel; L++) {
+    const next: Array<{ id: string; col: number }> = [];
+    for (const { id: M, col: C } of frontier) {
+      const targetCol = C - 1;
+      const colSet = ensureCol(targetCol);
+      for (const P of predOf.get(M) ?? []) {
+        const conn = connLookup.get(`${P}|${M}`);
+        if (!conn) continue;
+        if (!colSet.has(P)) {
+          colSet.add(P);
+          next.push({ id: P, col: targetCol });
+        }
+        const kind = taggedMoveIds.has(P) && taggedMoveIds.has(M) ? "flow" : "incoming";
+        edgeSpecs.push({ src: P, srcCol: targetCol, tgt: M, tgtCol: C, conn, kind });
+      }
+    }
+    if (next.length === 0) break;
+    frontier = next;
+  }
+
+  // Successor BFS — fan RIGHT from every tagged move at its column.
+  frontier = taggedArr.map((id) => ({ id, col: tagColumn.get(id)! }));
+  for (let L = 1; L <= maxLevel; L++) {
+    const next: Array<{ id: string; col: number }> = [];
+    for (const { id: M, col: C } of frontier) {
+      const targetCol = C + 1;
+      const colSet = ensureCol(targetCol);
+      for (const S of succOf.get(M) ?? []) {
+        const conn = connLookup.get(`${M}|${S}`);
+        if (!conn) continue;
+        if (!colSet.has(S)) {
+          colSet.add(S);
+          next.push({ id: S, col: targetCol });
+        }
+        const kind = taggedMoveIds.has(M) && taggedMoveIds.has(S) ? "flow" : "outgoing";
+        edgeSpecs.push({ src: M, srcCol: C, tgt: S, tgtCol: targetCol, conn, kind });
+      }
+    }
+    if (next.length === 0) break;
+    frontier = next;
+  }
+
+  // At L0 the BFS doesn't run, so the Level-0 flow edges between tagged moves
+  // aren't created above. Add them directly between tagged anchor instances so
+  // the tagged sequence still reads as a connected flow with no neighbors.
+  if (maxLevel === 0) {
+    for (const conn of connections) {
+      if (conn.source_move_id === conn.target_move_id) continue;
+      if (
+        taggedMoveIds.has(conn.source_move_id) &&
+        taggedMoveIds.has(conn.target_move_id)
+      ) {
+        const srcCol = tagColumn.get(conn.source_move_id);
+        const tgtCol = tagColumn.get(conn.target_move_id);
+        if (srcCol === undefined || tgtCol === undefined) continue;
+        edgeSpecs.push({
+          src: conn.source_move_id,
+          srcCol,
+          tgt: conn.target_move_id,
+          tgtCol,
+          conn,
+          kind: "flow",
+        });
+      }
+    }
+  }
+
+  // Position nodes. Within each column: the column's tagged anchor at row 0,
+  // then any other tagged duplicates, then non-tagged neighbors — each group
+  // sorted by the active criterion.
+  const positionedNodes: Node[] = [];
+  const focusPositions = new Map<string, "left" | "center" | "right">();
+  const virtualToRealId = new Map<string, string>();
+  const vidOf = (moveId: string, col: number) => `${moveId}_tagcol_${col}`;
+
+  for (let col = minCol; col <= maxCol; col++) {
+    const set = columnMoves.get(col);
+    if (!set || set.size === 0) continue;
+    const ids = [...set];
+    const anchor = columnAnchor.get(col);
+    const anchorArr = anchor && set.has(anchor) ? [anchor] : [];
+    const taggedInCol = ids
+      .filter((id) => taggedMoveIds.has(id) && id !== anchor)
+      .sort(compareMoves);
+    const otherInCol = ids.filter((id) => !taggedMoveIds.has(id)).sort(compareMoves);
+    const ordered = [...anchorArr, ...taggedInCol, ...otherInCol];
+
+    let y = START_Y;
+    ordered.forEach((realMoveId, rowIdx) => {
+      const realNode = nodes.find((n) => n.id === realMoveId);
+      if (!realNode) return;
+
+      const isTagged = taggedMoveIds.has(realMoveId);
+      // A node renders its cover preview when previews are on and it's either a
+      // tagged ("center") node or the first node in the column.
+      const showsPreview = !!(
+        showPreview &&
+        getMoveData(realMoveId)?.cover_media_id &&
+        (isTagged || rowIdx === 0)
+      );
+
+      // Advance y. The preview floats UP from the node, so a preview-showing
+      // move (other than the first row) needs extra clearance above it so it
+      // doesn't cover the move above.
+      if (rowIdx > 0) {
+        y += ROW_GAP + (showsPreview ? PREVIEW_CLEARANCE : 0);
+      }
+
+      const vId = vidOf(realMoveId, col);
+      virtualToRealId.set(vId, realMoveId);
+
+      const x = (col - minCol) * COL_GAP;
+
+      // Tagged moves are styled as "center" (yellow). Non-tagged use a side
+      // for text alignment based on which way they were expanded.
+      const focusPos: "left" | "center" | "right" = isTagged
+        ? "center"
+        : col <= (anchor ? tagColumn.get(anchor) ?? col : col)
+        ? "left"
+        : "right";
+
+      positionedNodes.push({
+        ...realNode,
+        id: vId,
+        position: { x, y },
+        data: {
+          ...realNode.data,
+          focusPosition: focusPos,
+          isColumnFirst: rowIdx === 0,
+          realMoveId,
+        },
+      });
+      focusPositions.set(vId, focusPos);
+    });
+  }
+
+  // Build edges from the adjacent-column specs. Dedup identical instance pairs.
+  const filteredEdges: Edge[] = [];
+  const addedEdges = new Set<string>();
+  const placedVids = new Set(positionedNodes.map((n) => n.id));
+
+  for (const spec of edgeSpecs) {
+    const srcVid = vidOf(spec.src, spec.srcCol);
+    const tgtVid = vidOf(spec.tgt, spec.tgtCol);
+    if (!placedVids.has(srcVid) || !placedVids.has(tgtVid)) continue;
+    const edgeKey = `${srcVid}__${tgtVid}`;
+    if (addedEdges.has(edgeKey)) continue;
+    addedEdges.add(edgeKey);
+
+    filteredEdges.push({
+      id: `${spec.conn.id}_${srcVid}_${tgtVid}`,
+      source: srcVid,
+      target: tgtVid,
+      type: "smoothstep",
+      markerEnd: { type: MarkerType.ArrowClosed },
+      label: spec.conn.label || undefined,
+      data: { connection: spec.conn, tagEdgeKind: spec.kind },
+    });
+  }
+
+  return {
+    nodes: positionedNodes,
+    edges: filteredEdges,
+    focusPositions,
+    virtualToRealId,
+  };
 }
 
 // ─── Ring Layout ───────────────────────────────────────────────────────────
@@ -1137,24 +1464,29 @@ function getCoreExploreLayoutElements(
 
 export default function CollectionGraphPage() {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const mode: "flow" | "graph" = location.pathname.endsWith("/flow") ? "flow" : "graph";
   const [collection, setCollection] = useState<CollectionWithMoves | null>(
     null
   );
   const [moves, setMoves] = useState<MoveGraphData[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [mediaTags, setMediaTags] = useState<MediaTagLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Read initial layout and node from URL (once, on mount)
   const initialParams = useRef(new URLSearchParams(window.location.search));
   const [layout, setLayout] = useState<"dagre" | "custom" | "focus" | "force" | "elk" | "ring" | "core">(() => {
+    if (mode === "flow") return "focus";
     const urlLayout = initialParams.current.get("layout");
-    const validLayouts = ["dagre", "custom", "focus", "force", "elk", "ring", "core"] as const;
-    if (urlLayout && (validLayouts as readonly string[]).includes(urlLayout)) {
-      return urlLayout as typeof validLayouts[number];
+    const graphLayouts = ["dagre", "custom", "force", "elk", "ring", "core"] as const;
+    if (urlLayout && (graphLayouts as readonly string[]).includes(urlLayout)) {
+      return urlLayout as typeof graphLayouts[number];
     }
-    return "focus";
+    return "dagre";
   });
   const [elkAlgorithm, setElkAlgorithm] = useState<ELKAlgorithm>("layered");
 
@@ -1162,6 +1494,15 @@ export default function CollectionGraphPage() {
   const [focusedMoveId, setFocusedMoveId] = useState<string | null>(null);
   const [focusSortBy, setFocusSortBy] = useState<string>("difficulty");
   const [focusSortAsc, setFocusSortAsc] = useState(true);
+
+  // Sync layout to route mode (handles tab switching without remount)
+  useEffect(() => {
+    if (mode === "flow" && layout !== "focus") {
+      setLayout("focus");
+    } else if (mode === "graph" && layout === "focus") {
+      setLayout("dagre");
+    }
+  }, [mode, layout]);
 
   // Auto-select node when focus layout opens with no focused node
   // Prefer URL param, fall back to random
@@ -1179,7 +1520,7 @@ export default function CollectionGraphPage() {
   const [focusLevel, setFocusLevel] = useState(() => {
     const urlLevel = initialParams.current.get("level");
     const parsed = urlLevel ? parseInt(urlLevel, 10) : NaN;
-    return Number.isFinite(parsed) && parsed >= 1 && parsed <= 5 ? parsed : 1;
+    return Number.isFinite(parsed) && parsed >= 0 && parsed <= 5 ? parsed : 1;
   });
   const [virtualToRealIdMap, setVirtualToRealIdMap] = useState<Map<string, string>>(new Map());
 
@@ -1191,6 +1532,10 @@ export default function CollectionGraphPage() {
   // Focus preview state
   const [showPreview, setShowPreview] = useState(() => initialParams.current.get("preview") === "1");
 
+  // Active tag filter (Flow mode): when set, focus locks to a tagged move
+  // and tagged moves are visually highlighted in the graph.
+  const [activeTagId, setActiveTagId] = useState<string | null>(() => initialParams.current.get("tag"));
+
   // Panel state
   const [selectedMove, setSelectedMove] = useState<Move | null>(null);
   const [addConnectionMove, setAddConnectionMove] = useState<Move | null>(null);
@@ -1201,7 +1546,7 @@ export default function CollectionGraphPage() {
   const [deleteSequenceWarnings, setDeleteSequenceWarnings] = useState<string[]>([]);
   const [connectionPreview, setConnectionPreview] = useState<ConnectionPreview | null>(null);
 
-  // Sync selected node, layout, level, and preview to URL (via replaceState, no React re-renders)
+  // Sync selected node, layout, level, preview, and active tag to URL (via replaceState, no React re-renders)
   useEffect(() => {
     const nodeId = layout === "focus" ? focusedMoveId : selectedMove?.id;
     const params = new URLSearchParams();
@@ -1209,12 +1554,56 @@ export default function CollectionGraphPage() {
     if (layout !== "focus") params.set("layout", layout);
     if (focusLevel !== 1) params.set("level", String(focusLevel));
     if (showPreview) params.set("preview", "1");
+    if (activeTagId) params.set("tag", activeTagId);
     const newSearch = params.toString();
     const newUrl = newSearch ? `${window.location.pathname}?${newSearch}` : window.location.pathname;
     if (window.location.search !== (newSearch ? `?${newSearch}` : "")) {
       window.history.replaceState(null, "", newUrl);
     }
-  }, [selectedMove?.id, focusedMoveId, layout, focusLevel, showPreview]);
+  }, [selectedMove?.id, focusedMoveId, layout, focusLevel, showPreview, activeTagId]);
+
+  // Derived: the currently active tag object (null if no tag or tag was deleted)
+  const activeTag = useMemo(
+    () => (activeTagId ? tags.find((t) => t.id === activeTagId) ?? null : null),
+    [tags, activeTagId]
+  );
+
+  // Derived: set of move IDs that carry the active tag
+  const taggedMoveIds = useMemo(() => {
+    if (!activeTag) return new Set<string>();
+    return new Set(
+      moves.filter((m) => m.tag_names?.includes(activeTag.name)).map((m) => m.id)
+    );
+  }, [activeTag, moves]);
+
+  // Derived: for the active tag, which media item each move's preview should
+  // use (the media marked with that tag). Moves without one fall back to cover.
+  const tagPreviewMediaByMove = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!activeTagId) return map;
+    for (const mt of mediaTags) {
+      if (mt.tag_id === activeTagId) map.set(mt.move_id, mt.media_id);
+    }
+    return map;
+  }, [activeTagId, mediaTags]);
+
+  // Clear the active tag if it was deleted (e.g. user removed the tag in another tab)
+  useEffect(() => {
+    if (activeTagId && tags.length > 0 && !tags.some((t) => t.id === activeTagId)) {
+      setActiveTagId(null);
+    }
+  }, [activeTagId, tags]);
+
+  // Ensure a focused move exists while a tag is active (the tag layout needs
+  // one to render). Only seeds a default when nothing is focused — it must NOT
+  // override an explicit click, which may select a non-tagged neighbor that
+  // becomes the focus when the tag chip is cleared.
+  useEffect(() => {
+    if (!activeTagId || taggedMoveIds.size === 0) return;
+    if (focusedMoveId) return;
+    const firstTagged = moves.find((m) => taggedMoveIds.has(m.id));
+    if (firstTagged) setFocusedMoveId(firstTagged.id);
+  }, [activeTagId, taggedMoveIds, focusedMoveId, moves]);
 
   // Graph analysis state - toggle for showing component colors
   const [showComponentColors, setShowComponentColors] = useState(false);
@@ -1247,12 +1636,27 @@ export default function CollectionGraphPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
+  // Tracks the last layout "structure" we auto-centered on. In tag mode the
+  // structure doesn't change when the focused node changes (clicking just
+  // re-selects), so we use this to avoid re-centering the view on every click.
+  const lastFitKeyRef = useRef<string>("");
 
-  // Graph search: filtered results
+  // Sort by last-updated datetime, most recent first. updated_at is an ISO
+  // string (naive UTC), so lexicographic compare matches chronological order.
+  const byUpdatedDesc = (a: { updated_at: string }, b: { updated_at: string }) =>
+    (b.updated_at ?? "").localeCompare(a.updated_at ?? "");
+
+  // Graph search: filtered results, newest-updated first
   const graphSearchResults = useMemo(() => {
     if (!graphSearch.trim()) return [];
-    return moves.filter((m) => multiTermMatch(m.name, graphSearch));
+    return moves.filter((m) => multiTermMatch(m.name, graphSearch)).sort(byUpdatedDesc);
   }, [moves, graphSearch]);
+
+  // Tag search results (Flow mode only — Graph mode keeps moves-only search)
+  const tagSearchResults = useMemo(() => {
+    if (mode !== "flow" || !graphSearch.trim()) return [];
+    return tags.filter((t) => multiTermMatch(t.name, graphSearch)).sort(byUpdatedDesc);
+  }, [tags, graphSearch, mode]);
 
   // Graph search: select a move from results
   const handleGraphSearchSelect = useCallback(
@@ -1260,6 +1664,32 @@ export default function CollectionGraphPage() {
       setGraphSearch("");
       setGraphSearchOpen(false);
       if (layout === "focus") {
+        if (activeTagId) {
+          // In tag mode: if the move is already shown in the tag layout, focus
+          // it (stay in tag mode) and center on it. Otherwise exit the tag view
+          // and show the move as the focused node in regular Flow.
+          const displayedNode = nodes.find((n) => {
+            const realId = (n.data as Record<string, unknown>).realMoveId as string | undefined;
+            return (realId ?? n.id) === move.id;
+          });
+          if (displayedNode) {
+            setFocusedMoveId(move.id);
+            setSelectedMove(null);
+            requestAnimationFrame(() => {
+              reactFlowInstance.current?.fitView({
+                nodes: [{ id: displayedNode.id }],
+                duration: 300,
+                maxZoom: 1.2,
+                padding: 0.5,
+              });
+            });
+          } else {
+            setActiveTagId(null);
+            setFocusedMoveId(move.id);
+            setSelectedMove(null);
+          }
+          return;
+        }
         setFocusedMoveId(move.id);
       } else {
         setSelectedMove(move);
@@ -1280,15 +1710,58 @@ export default function CollectionGraphPage() {
         });
       }
     },
-    [layout, setNodes]
+    [layout, setNodes, activeTagId, nodes]
   );
 
-  // Graph search: keyboard navigation
+  // Graph search: select a tag from results
+  const handleTagSearchSelect = useCallback(
+    (tag: Tag) => {
+      setGraphSearch("");
+      setGraphSearchOpen(false);
+      setActiveTagId(tag.id);
+      const firstTagged = moves.find((m) => m.tag_names?.includes(tag.name));
+      if (firstTagged) setFocusedMoveId(firstTagged.id);
+      setSelectedMove(null);
+    },
+    [moves]
+  );
+
+  const handleClearTag = useCallback(() => {
+    setActiveTagId(null);
+  }, []);
+
+  // Clicking a tag in the move detail panel activates that tag in the Flow view.
+  // If we're in Graph mode, switch to Flow (the fresh URL carries ?tag= so it
+  // works whether or not the route remounts).
+  const handleTagClickFromPanel = useCallback(
+    (tag: Tag) => {
+      setActiveTagId(tag.id);
+      handlePanelClose();
+      if (mode !== "flow") {
+        navigate(`/collections/${id}/flow?tag=${tag.id}`);
+      }
+    },
+    [mode, id, navigate, handlePanelClose]
+  );
+
+  // Graph search: keyboard navigation — tags first, then moves
+  const visibleTagResults = tagSearchResults.slice(0, 10);
   const visibleGraphResults = graphSearchResults.slice(0, graphSearchLimit);
+  const combinedItemCount = visibleTagResults.length + visibleGraphResults.length;
+  const handleCombinedSelect = useCallback(
+    (i: number) => {
+      if (i < visibleTagResults.length) {
+        handleTagSearchSelect(visibleTagResults[i]);
+      } else {
+        handleGraphSearchSelect(visibleGraphResults[i - visibleTagResults.length]);
+      }
+    },
+    [visibleTagResults, visibleGraphResults, handleTagSearchSelect, handleGraphSearchSelect]
+  );
   const { highlightedIndex: graphSearchIndex, handleKeyDown: handleGraphSearchKeyDown } =
     useDropdownKeyNav({
-      itemCount: visibleGraphResults.length,
-      onSelect: (i) => handleGraphSearchSelect(visibleGraphResults[i]),
+      itemCount: combinedItemCount,
+      onSelect: handleCombinedSelect,
       onEscape: () => setGraphSearchOpen(false),
       enabled: graphSearchOpen && graphSearch.trim().length > 0,
     });
@@ -1314,11 +1787,12 @@ export default function CollectionGraphPage() {
     setLoadError(null);
     try {
       const res = await client.get(`/collections/${id}/graph-data`);
-      const { collection: col, moves: graphMoves, connections: graphConnections, tags: graphTags } = res.data;
+      const { collection: col, moves: graphMoves, connections: graphConnections, tags: graphTags, media_tags: graphMediaTags } = res.data;
       setCollection(col);
       setMoves(graphMoves);
       setConnections(graphConnections);
       setTags(graphTags || []);
+      setMediaTags(graphMediaTags || []);
     } catch (err: any) {
       const status = err.response?.status;
       if (status === 404) {
@@ -1518,12 +1992,35 @@ export default function CollectionGraphPage() {
             ? (isSelected ? "animatedCurvedEdge" : "smoothstep")
             : (isSelected ? "animatedCurvedEdge" : "curvedEdge");
 
+        // Tag layout: color every edge structurally by its kind so all tagged
+        // moves (not just the focused one) show highlighted connections.
+        const tagKind = (edge.data as Record<string, unknown> | undefined)?.tagEdgeKind as
+          | "flow"
+          | "incoming"
+          | "outgoing"
+          | undefined;
+        let tagStyle: React.CSSProperties | undefined;
+        let tagMarkerColor: string | undefined;
+        if (tagKind === "flow") {
+          tagStyle = { stroke: TAG_GREEN, strokeWidth: 2.5 };
+          tagMarkerColor = TAG_GREEN;
+        } else if (tagKind === "incoming") {
+          tagStyle = { stroke: EDGE_BLUE, strokeWidth: 2.5 };
+          tagMarkerColor = EDGE_BLUE;
+        } else if (tagKind === "outgoing") {
+          tagStyle = { stroke: EDGE_ORANGE, strokeWidth: 2.5 };
+          tagMarkerColor = EDGE_ORANGE;
+        }
+
         return {
           ...edge,
           sourceHandle: handles.sourceHandle,
           targetHandle: handles.targetHandle,
           type: edgeType,
-          markerEnd: isSelected ? undefined : { type: MarkerType.ArrowClosed },
+          markerEnd: isSelected
+            ? undefined
+            : { type: MarkerType.ArrowClosed, color: tagMarkerColor },
+          ...(tagStyle ? { style: tagStyle } : {}),
           data: { ...edge.data, curveFactor },
         };
       });
@@ -1547,6 +2044,9 @@ export default function CollectionGraphPage() {
             connectionStatus: graphAnalysis.connectionStatus.get(lookupId),
             componentIndex: graphAnalysis.nodeComponentIndex.get(lookupId),
             showComponentColors,
+            tagged: taggedMoveIds.has(lookupId),
+            // When a tag is active, prefer the media marked with it (else cover).
+            previewMediaId: tagPreviewMediaByMove.get(lookupId),
           },
         };
       });
@@ -1554,8 +2054,18 @@ export default function CollectionGraphPage() {
       setNodes(nodesWithAnalysis);
       setEdges(finalEdges);
 
-      // Center the view on the selected node after layout completes
-      if (activeId && reactFlowInstance.current) {
+      // Center the view on the selected node after layout completes.
+      // In tag mode the layout structure is independent of the focused node, so
+      // we only auto-center when the structure (tag / level / sort) changes —
+      // clicking a node to re-select it should NOT pan the whole view.
+      const isTagMode = layoutMode === "focus" && !!activeTagId;
+      const fitKey = isTagMode
+        ? `tag:${activeTagId}:${focusLevel}:${focusSortBy}:${focusSortAsc}`
+        : `${layoutMode}:${activeId ?? ""}`;
+      const shouldCenter = !isTagMode || fitKey !== lastFitKeyRef.current;
+      lastFitKeyRef.current = fitKey;
+
+      if (shouldCenter && activeId && reactFlowInstance.current) {
         const selectedNode = nodesWithAnalysis.find((n) => n.selected);
         if (selectedNode) {
           // Use requestAnimationFrame to ensure nodes are rendered before fitting
@@ -1573,7 +2083,7 @@ export default function CollectionGraphPage() {
     // Note: selectedMove?.id intentionally excluded — selection sync is handled
     // by a separate useEffect to avoid triggering expensive re-layouts on click.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedEdgeId, graphAnalysis, showComponentColors, setNodes, setEdges, layout, focusedMoveId]
+    [selectedEdgeId, graphAnalysis, showComponentColors, setNodes, setEdges, layout, focusedMoveId, taggedMoveIds, activeTagId, focusLevel, focusSortBy, focusSortAsc, tagPreviewMediaByMove]
   );
 
   // Apply layout when data changes
@@ -1584,17 +2094,31 @@ export default function CollectionGraphPage() {
     let baseEdges: Edge[];
 
     if (layout === "focus" && focusedMoveId) {
-      // Focus layout: centered focused move with predecessors/successors
-      const focusResult = getFocusLayoutElements(
-        initialNodes,
-        initialEdges,
-        connections,
-        moves,
-        focusedMoveId,
-        focusSortBy,
-        focusSortAsc,
-        focusLevel
-      );
+      // When a tag is active, use the multi-column tag-focus layout where each
+      // tagged move owns its own column and L-neighbors fan into the columns
+      // to either side. Otherwise use the standard single-center focus.
+      const focusResult = activeTagId && taggedMoveIds.size > 0
+        ? getTagFocusLayoutElements(
+            initialNodes,
+            initialEdges,
+            connections,
+            moves,
+            taggedMoveIds,
+            focusSortBy,
+            focusSortAsc,
+            focusLevel,
+            showPreview
+          )
+        : getFocusLayoutElements(
+            initialNodes,
+            initialEdges,
+            connections,
+            moves,
+            focusedMoveId,
+            focusSortBy,
+            focusSortAsc,
+            focusLevel
+          );
       finalNodes = focusResult.nodes;
       baseEdges = focusResult.edges;
 
@@ -1711,12 +2235,29 @@ export default function CollectionGraphPage() {
   // Note: selectedEdgeId intentionally excluded — edge selection styling is handled
   // by applyFinalStyling callback, not by re-running the full layout.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialNodes, initialEdges, layout, focusedMoveId, focusSortBy, focusSortAsc, focusLevel, connections, moves, graphAnalysis, showComponentColors, elkAlgorithm, applyFinalStyling, connectionPreview, coreExploreId]);
+  }, [initialNodes, initialEdges, layout, focusedMoveId, focusSortBy, focusSortAsc, focusLevel, connections, moves, graphAnalysis, showComponentColors, elkAlgorithm, applyFinalStyling, connectionPreview, coreExploreId, activeTagId, taggedMoveIds, showPreview]);
 
   // Sync ReactFlow node selection + edge highlighting with selectedMove / focusedMoveId
   // Runs separately from layout effect to avoid expensive re-layouts on every click
   useEffect(() => {
     const activeId = layout === "focus" ? focusedMoveId : selectedMove?.id;
+
+    // Tag mode: edges are colored structurally by applyFinalStyling (green
+    // flow / blue incoming / orange outgoing) for ALL tagged moves. Here we
+    // only sync the focused node's selection ring — don't recolor edges.
+    if (activeTagId && layout === "focus") {
+      setNodes((cur) =>
+        cur.map((node) => {
+          const realId = (node.data as Record<string, unknown>).realMoveId as string | undefined;
+          const lookupId = realId || node.id;
+          const shouldSelect = activeId ? (lookupId === activeId || node.id === activeId) : false;
+          if (node.selected === shouldSelect) return node;
+          return { ...node, selected: shouldSelect };
+        })
+      );
+      return;
+    }
+
     if (!activeId) {
       // Clear node selection
       setNodes((cur) => {
@@ -1792,7 +2333,7 @@ export default function CollectionGraphPage() {
       );
       return curNodes; // Don't modify nodes
     });
-  }, [layout, selectedMove?.id, focusedMoveId, setNodes, setEdges, virtualToRealIdMap, selectedEdgeId]);
+  }, [layout, selectedMove?.id, focusedMoveId, setNodes, setEdges, virtualToRealIdMap, selectedEdgeId, activeTagId]);
 
   // Add/remove preview edge when connection preview changes
   useEffect(() => {
@@ -1840,7 +2381,10 @@ export default function CollectionGraphPage() {
       const move = moves.find((m) => m.id === realMoveId);
       if (move) {
         if (layout === "focus") {
-          // In focus mode, clicking a node re-focuses on it
+          // In focus mode (including tag mode) clicking a node makes it the
+          // focused/selected node. In tag mode the layout itself stays put;
+          // when the tag chip is cleared, this focused node anchors the
+          // regular Flow view.
           setFocusedMoveId(realMoveId);
           setSelectedMove(null);
         } else if (layout === "core") {
@@ -1983,11 +2527,12 @@ export default function CollectionGraphPage() {
       }
       // Reload all graph data so new move + its connections are picked up
       const res = await client.get(`/collections/${id}/graph-data`);
-      const { collection: col, moves: graphMoves, connections: graphConnections, tags: graphTags } = res.data;
+      const { collection: col, moves: graphMoves, connections: graphConnections, tags: graphTags, media_tags: graphMediaTags } = res.data;
       setCollection(col);
       setMoves(graphMoves);
       setConnections(graphConnections);
       setTags(graphTags || []);
+      setMediaTags(graphMediaTags || []);
       // Also update allMoves so the new move can be selected in the panel
       const newMove = graphMoves.find((m: Move) => m.id === moveId);
       if (newMove) {
@@ -2098,26 +2643,15 @@ export default function CollectionGraphPage() {
 
   const showPanel = selectedMove || addConnectionMove || editingMove || selectedConnection || panelClosing;
 
-  return (
-    <div className="graph-page">
-      <div className="graph-header">
-        <Link to={`/collections/${id}/moves`} className="back-link">
-          &larr; {collection.name}
-        </Link>
+  const toolbar = (
+    <>
+      {mode === "graph" && (
         <select
           className="layout-dropdown"
-          value={layout}
+          value={layout === "focus" ? "dagre" : layout}
           onChange={(e) => {
-            const newLayout = e.target.value as typeof layout;
-            if (newLayout === "focus") {
-              setLayout("focus");
-              if (selectedMove) {
-                setFocusedMoveId(selectedMove.id);
-              } else if (!focusedMoveId && moves.length > 0) {
-                setFocusedMoveId(moves[0].id);
-              }
-              setSelectedMove(null);
-            } else if (newLayout === "core") {
+            const newLayout = e.target.value as "dagre" | "custom" | "force" | "elk" | "ring" | "core";
+            if (newLayout === "core") {
               setCoreExploreId(null);
               switchToLayout("core");
             } else {
@@ -2125,7 +2659,6 @@ export default function CollectionGraphPage() {
             }
           }}
         >
-          <option value="focus">Focus</option>
           <option value="core">Core</option>
           <option value="custom">Custom</option>
           <option value="ring">Ring</option>
@@ -2133,12 +2666,13 @@ export default function CollectionGraphPage() {
           <option value="force">Force</option>
           <option value="elk">ELK</option>
         </select>
+      )}
 
-        {/* Graph move search */}
+      {/* Graph move/tag search */}
         <div className="graph-search" ref={graphSearchRef}>
           <input
             type="text"
-            placeholder="Search moves..."
+            placeholder={mode === "flow" ? "Search moves and tags..." : "Search moves..."}
             value={graphSearch}
             onChange={(e) => {
               setGraphSearch(e.target.value);
@@ -2150,18 +2684,47 @@ export default function CollectionGraphPage() {
           />
           {graphSearchOpen && graphSearch.trim() && (
             <div className="graph-search-dropdown">
-              {graphSearchResults.length === 0 ? (
-                <div className="option disabled">No moves found</div>
+              {combinedItemCount === 0 ? (
+                <div className="option disabled">
+                  {mode === "flow" ? "No moves or tags found" : "No moves found"}
+                </div>
               ) : (
-                visibleGraphResults.map((move, idx) => (
-                  <div
-                    key={move.id}
-                    className={`option ${idx === graphSearchIndex ? "highlighted" : ""}`}
-                    onClick={() => handleGraphSearchSelect(move)}
-                  >
-                    {highlightTerms(move.name, graphSearch)}
-                  </div>
-                ))
+                <>
+                  {visibleTagResults.length > 0 && (
+                    <>
+                      <div className="option-section-header">Tags</div>
+                      {visibleTagResults.map((tag, idx) => (
+                        <div
+                          key={`tag-${tag.id}`}
+                          className={`option option-tag ${idx === graphSearchIndex ? "highlighted" : ""}`}
+                          onClick={() => handleTagSearchSelect(tag)}
+                        >
+                          <span className="option-tag-marker">#</span>
+                          {highlightTerms(tag.name, graphSearch)}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {visibleGraphResults.length > 0 && (
+                    <>
+                      {visibleTagResults.length > 0 && (
+                        <div className="option-section-header">Moves</div>
+                      )}
+                      {visibleGraphResults.map((move, idx) => {
+                        const combinedIdx = visibleTagResults.length + idx;
+                        return (
+                          <div
+                            key={move.id}
+                            className={`option ${combinedIdx === graphSearchIndex ? "highlighted" : ""}`}
+                            onClick={() => handleGraphSearchSelect(move)}
+                          >
+                            {highlightTerms(move.name, graphSearch)}
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </>
               )}
               {graphSearchResults.length > graphSearchLimit && (
                 <div
@@ -2198,10 +2761,6 @@ export default function CollectionGraphPage() {
           </svg>
         </button>
 
-        <Link to={`/collections/${id}/learn`} className="btn btn-secondary btn-small">
-          Learn
-        </Link>
-
         {/* ELK algorithm sub-selector */}
         {layout === "elk" && (
           <div className="elk-algorithm-selector">
@@ -2221,8 +2780,8 @@ export default function CollectionGraphPage() {
             <div className="focus-level-controls">
               <button
                 className="focus-level-btn"
-                onClick={() => setFocusLevel(Math.max(1, focusLevel - 1))}
-                disabled={focusLevel <= 1}
+                onClick={() => setFocusLevel(Math.max(0, focusLevel - 1))}
+                disabled={focusLevel <= 0}
                 title="Decrease level"
               >
                 −
@@ -2287,8 +2846,32 @@ export default function CollectionGraphPage() {
           )}{" "}
           moves
         </span>
-      </div>
+    </>
+  );
+
+  return (
+    <div className="graph-page">
+      <CollectionTabBar
+        collectionId={id!}
+        collectionName={collection.name}
+        active={mode}
+        toolbar={toolbar}
+      />
       <div className="graph-container">
+        {/* Active tag chip (Flow mode only) */}
+        {mode === "flow" && activeTag && (
+          <div className="tag-chip">
+            <span className="tag-chip-name">{activeTag.name}</span>
+            <button
+              className="tag-chip-close"
+              onClick={handleClearTag}
+              aria-label={`Clear tag ${activeTag.name}`}
+              title="Clear tag filter"
+            >
+              ×
+            </button>
+          </div>
+        )}
         {/* Empty state warnings */}
         {moves.length === 0 && (
           <div className="graph-empty-state">
@@ -2359,6 +2942,7 @@ export default function CollectionGraphPage() {
                     ).catch(() => setDeleteSequenceWarnings([]));
                   }
                 }}
+                onTagClick={handleTagClickFromPanel}
                 closing={panelClosing}
               />
             )}

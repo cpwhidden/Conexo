@@ -1,6 +1,7 @@
 import { Link, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import client from "../api/client";
+import CollectionTabBar from "../components/CollectionTabBar";
 
 interface CollectionInfo {
   id: string;
@@ -21,12 +22,11 @@ export default function LearnPage() {
 
   return (
     <div className="learn-page">
-      <div className="learn-header">
-        <Link to={`/collections/${id}/graph`} className="back-link">
-          &larr; {collection.name}
-        </Link>
-        <h2>Learn</h2>
-      </div>
+      <CollectionTabBar
+        collectionId={id!}
+        collectionName={collection.name}
+        active="learn"
+      />
 
       <div className="learn-grid">
         <Link

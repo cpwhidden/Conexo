@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import client from "../api/client";
+import CollectionTabBar from "../components/CollectionTabBar";
 import type { CollectionWithMoves, Move, CollectionMoveAdd } from "../types";
 
 export default function CollectionDetailPage() {
@@ -84,80 +85,72 @@ export default function CollectionDetailPage() {
     (m) => !moveIdsInCollection.has(m.id)
   );
 
+  const toolbar = editing ? (
+    <form onSubmit={handleUpdate} className="edit-form">
+      <input
+        type="text"
+        value={editForm.name}
+        onChange={(e) =>
+          setEditForm({ ...editForm, name: e.target.value })
+        }
+        required
+      />
+      <input
+        type="text"
+        placeholder="Description"
+        value={editForm.description}
+        onChange={(e) =>
+          setEditForm({ ...editForm, description: e.target.value })
+        }
+      />
+      <button type="submit" className="btn btn-primary">
+        Save
+      </button>
+      <button
+        type="button"
+        className="btn btn-secondary"
+        onClick={() => setEditing(false)}
+      >
+        Cancel
+      </button>
+    </form>
+  ) : (
+    <>
+      <span className="detail-style">{collection.dance_style}</span>
+      {collection.description && (
+        <span className="detail-description-inline">{collection.description}</span>
+      )}
+      <div className="toolbar-spacer" />
+      <button
+        className="btn btn-secondary"
+        onClick={() => setShowAddForm(!showAddForm)}
+      >
+        {showAddForm ? "Cancel" : "Add Move"}
+      </button>
+      <button
+        className="btn btn-secondary"
+        onClick={() => setEditing(true)}
+      >
+        Edit
+      </button>
+      <button className="btn btn-danger" onClick={handleDelete}>
+        Delete
+      </button>
+    </>
+  );
+
   return (
     <div className="collection-detail-page">
-      <div className="detail-header">
-        {editing ? (
-          <form onSubmit={handleUpdate} className="edit-form">
-            <input
-              type="text"
-              value={editForm.name}
-              onChange={(e) =>
-                setEditForm({ ...editForm, name: e.target.value })
-              }
-              required
-            />
-            <input
-              type="text"
-              placeholder="Description"
-              value={editForm.description}
-              onChange={(e) =>
-                setEditForm({ ...editForm, description: e.target.value })
-              }
-            />
-            <button type="submit" className="btn btn-primary">
-              Save
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setEditing(false)}
-            >
-              Cancel
-            </button>
-          </form>
-        ) : (
-          <>
-            <div>
-              <h2>{collection.name}</h2>
-              <span className="detail-style">{collection.dance_style}</span>
-              {collection.description && (
-                <p className="detail-description">{collection.description}</p>
-              )}
-            </div>
-            <div className="detail-actions">
-              <Link to={`/collections/${id}/graph`} className="btn btn-primary">
-                View Graph
-              </Link>
-              <Link to={`/collections/${id}/learn`} className="btn btn-secondary">
-                Learn
-              </Link>
-              <Link to={`/collections/${id}/tags`} className="btn btn-secondary">
-                Tags
-              </Link>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setEditing(true)}
-              >
-                Edit
-              </button>
-              <button className="btn btn-danger" onClick={handleDelete}>
-                Delete
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+      <CollectionTabBar
+        collectionId={id!}
+        collectionName={collection.name}
+        active="list"
+        toolbar={toolbar}
+      />
 
       <div className="collection-moves-section">
         <div className="section-header">
           <h3>Moves ({collection.moves.length})</h3>
-          <button
-            className="btn btn-secondary"
-            onClick={() => setShowAddForm(!showAddForm)}
-          >
-            {showAddForm ? "Cancel" : "Add Move"}
-          </button>
         </div>
 
         {showAddForm && (
@@ -212,10 +205,6 @@ export default function CollectionDetailPage() {
           </ul>
         )}
       </div>
-
-      <Link to="/collections" className="back-link">
-        &larr; Back to Collections
-      </Link>
     </div>
   );
 }

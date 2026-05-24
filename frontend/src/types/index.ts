@@ -195,6 +195,13 @@ export interface TagCreate {
   name: string;
 }
 
+// Links a media item to a tag for a specific move (graph preview selection)
+export interface MediaTagLink {
+  move_id: string;
+  tag_id: string;
+  media_id: string;
+}
+
 export interface TaggedMove {
   id: string;
   name: string;

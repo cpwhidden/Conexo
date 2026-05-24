@@ -598,6 +598,34 @@
   text-decoration: underline;
 }
 
+/* Clickable tag name inside the move detail panel (jumps to the tag in graph) */
+.theme-tag-name {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.theme-tag-name:hover {
+  color: #22c55e;
+  text-decoration: underline;
+}
+
+/* Tag rendered as a link on the move detail page */
+.theme-tag-link {
+  color: #eee;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.theme-tag-link:hover {
+  color: #22c55e;
+  border-color: #22c55e;
+}
+
 .theme-tag-remove {
   background: none;
   border: none;
@@ -1058,6 +1086,70 @@
   display: flex;
   gap: 0.5rem;
   margin-top: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Media tags */
+.media-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.media-tag {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.45rem;
+  border-color: #22c55e;
+}
+
+.media-tag-search {
+  position: relative;
+  flex: 1;
+  min-width: 110px;
+}
+
+.media-tag-input {
+  width: 100%;
+  padding: 0.3rem 0.5rem;
+  background: #1a1a2e;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: #eee;
+  font-size: 0.8rem;
+}
+
+.media-tag-input:focus {
+  outline: none;
+  border-color: #22c55e;
+}
+
+.media-tag-suggestions {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: #1e1e2e;
+  border: 1px solid #444;
+  border-radius: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.media-tag-suggestion {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  color: #ddd;
+}
+
+.media-tag-suggestion:hover,
+.media-tag-suggestion.highlighted {
+  background: rgba(34, 197, 94, 0.18);
+  color: #fff;
 }
 
 .media-filename {
@@ -2059,6 +2151,25 @@ select optgroup {
   border-style: dashed;
 }
 
+/* Tagged-move highlight (green). The extra .focus-* / .selected combinations
+   raise specificity so this wins over .graph-node.focus-center (which is
+   applied to every tagged move and would otherwise paint it red). */
+.graph-node.tagged,
+.graph-node.tagged.focus-center,
+.graph-node.tagged.focus-left,
+.graph-node.tagged.focus-right {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: #22c55e;
+  box-shadow: 0 0 0 2px #22c55e, 0 0 12px rgba(34, 197, 94, 0.4);
+}
+
+.graph-node.tagged.selected,
+.graph-node.tagged.focus-center.selected {
+  background: rgba(34, 197, 94, 0.28);
+  border-color: #22c55e;
+  box-shadow: 0 0 0 2px #22c55e, 0 0 16px rgba(34, 197, 94, 0.6);
+}
+
 .graph-node-content {
   display: flex;
   align-items: center;
@@ -2313,6 +2424,8 @@ select optgroup {
 .graph-node-preview img,
 .graph-node-preview video {
   width: 100%;
+  max-height: 360px;
+  object-fit: contain;
   display: block;
   cursor: pointer;
 }
@@ -2649,6 +2762,21 @@ select optgroup {
   margin-bottom: 1rem;
 }
 
+.panel-cover-media {
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+
+.panel-cover-media img,
+.panel-cover-media video {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+}
+
 .panel-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2839,20 +2967,62 @@ select optgroup {
   box-shadow: 0 0 8px rgba(244, 67, 54, 0.3);
 }
 
-/* Entry point - no incoming connections (green left border) */
-.graph-node.entry-point {
-  border-left: 3px solid #4CAF50;
+/* Connection-status edge indicators are drawn as overlay bars (pseudo-elements)
+   rather than borders, so they stay visible on tagged/focused nodes whose
+   border color is themed (e.g. the green tagged outline). */
+/* Entry point - no incoming connections (green left bar) */
+.graph-node.entry-point::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #4CAF50;
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+  z-index: 3;
+  pointer-events: none;
 }
 
-/* Dead end - no outgoing connections (orange right border) */
-.graph-node.dead-end {
-  border-right: 3px solid #FF9800;
+/* Dead end - no outgoing connections (orange right bar) */
+.graph-node.dead-end::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #FF9800;
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+  z-index: 3;
+  pointer-events: none;
 }
 
-/* Isolated - no connections at all (red full border) */
-.graph-node.isolated {
-  border: 2px solid #f44336;
-  box-shadow: 0 0 8px rgba(244, 67, 54, 0.3);
+/* Isolated - no connections at all (red bars on both sides) */
+.graph-node.isolated::before,
+.graph-node.isolated::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #f44336;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.graph-node.isolated::before {
+  left: 0;
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+}
+
+.graph-node.isolated::after {
+  right: 0;
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
 }
 
 /* Component color highlighting (top border) - shown when badge is clicked */
@@ -3877,12 +4047,6 @@ select optgroup {
 }
 
 /* Learn Page */
-.learn-page {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 2rem 1rem;
-}
-
 .learn-header {
   margin-bottom: 2rem;
 }
@@ -3895,6 +4059,8 @@ select optgroup {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 1rem;
+  max-width: 800px;
+  margin: 0 auto;
 }
 
 .learn-card {
@@ -4107,4 +4273,197 @@ select optgroup {
 
 .btn-danger-icon:hover {
   color: #e94560;
+}
+
+/* Active tag chip overlay (Flow mode) */
+.tag-chip {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.5rem 0.35rem 0.7rem;
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid #22c55e;
+  border-radius: 6px;
+  color: #22c55e;
+  font-size: 0.85rem;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.tag-chip-name {
+  white-space: nowrap;
+}
+
+.tag-chip-close {
+  background: none;
+  border: none;
+  color: #22c55e;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.2rem;
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+
+.tag-chip-close:hover {
+  background: rgba(34, 197, 94, 0.25);
+}
+
+/* Search dropdown: section headers and tag rows */
+.graph-search-dropdown .option-section-header {
+  padding: 0.35rem 0.75rem 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #888;
+  background: transparent;
+  cursor: default;
+}
+
+.graph-search-dropdown .option-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.graph-search-dropdown .option-tag-marker {
+  color: #22c55e;
+  font-weight: 700;
+}
+
+/* Collection page header (tab bar shared across List/Flow/Graph/Learn/Tag) */
+.collection-page-header {
+  display: flex;
+  flex-direction: column;
+  background: #1a1a2e;
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+}
+
+.collection-page-titlebar {
+  display: flex;
+  align-items: stretch;
+  gap: 1.25rem;
+  padding: 0 1rem;
+  border-bottom: 1px solid #2a2a3e;
+}
+
+.collection-page-title {
+  margin: 0;
+  padding: 0.55rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #eee;
+  align-self: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.collection-tab-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.collection-tab {
+  padding: 0.55rem 1rem;
+  color: #888;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.collection-tab:hover {
+  color: #eee;
+}
+
+.collection-tab.active {
+  color: #e94560;
+  border-bottom-color: #e94560;
+}
+
+.collection-page-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  flex-wrap: wrap;
+}
+
+.collection-page-toolbar .toolbar-spacer {
+  flex: 1;
+}
+
+.collection-page-toolbar .detail-style {
+  margin-right: 0;
+}
+
+.collection-page-toolbar .detail-description-inline {
+  color: #aaa;
+  font-size: 0.85rem;
+}
+
+/* Graph page: header is sticky at top; content fills remaining space */
+.graph-page > .collection-page-header {
+  background: #1a1a2e;
+}
+
+.graph-page > .collection-page-header .collection-page-toolbar {
+  background: #1a1a2e;
+}
+
+/* Make the graph page header content match the existing graph-header look */
+.graph-page .collection-page-toolbar .graph-search {
+  margin-left: auto;
+}
+
+/* Learn and Tag pages: pull the header to the edges (cancel parent padding) */
+.learn-page .collection-page-header,
+.page > .collection-page-header,
+.collection-detail-page > .collection-page-header {
+  margin: -1.5rem -1.5rem 1.5rem;
+}
+
+.learn-page .collection-page-header {
+  margin-bottom: 2rem;
+}
+
+@media (max-width: 600px) {
+  .collection-page-titlebar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 0 0.75rem;
+  }
+
+  .collection-page-title {
+    font-size: 1rem;
+    padding: 0.5rem 0 0.15rem;
+  }
+
+  .collection-tab-bar {
+    overflow-x: auto;
+  }
+
+  .collection-tab {
+    padding: 0.5rem 0.7rem;
+    font-size: 0.85rem;
+  }
+
+  .collection-page-toolbar {
+    padding: 0.5rem 0.75rem;
+    gap: 0.5rem;
+  }
 }

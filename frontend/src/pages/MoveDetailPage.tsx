@@ -18,8 +18,20 @@ export default function MoveDetailPage() {
   const { moves: allMoves } = useMoves();
   const [moveCollections, setMoveCollections] = useState<Collection[]>([]);
   const [collectionTags, setCollectionTags] = useState<Record<string, Tag[]>>({});
+  const [mediaTagsVersion, setMediaTagsVersion] = useState(0);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteSequenceWarnings, setDeleteSequenceWarnings] = useState<string[]>([]);
+
+  // Tags available to attach to this move's media: the move's tags across all
+  // its collections (deduped). A media tag only affects the graph preview when
+  // the move itself carries that tag, so this is the meaningful set.
+  const availableMediaTags = (() => {
+    const byId = new Map<string, Tag>();
+    for (const tags of Object.values(collectionTags)) {
+      for (const t of tags) byId.set(t.id, t);
+    }
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+  })();
 
   useEffect(() => {
     if (!moveId) return;
@@ -215,7 +227,14 @@ export default function MoveDetailPage() {
                 {tags.length > 0 && (
                   <div className="themes-tag-container">
                     {tags.map((tag) => (
-                      <span key={tag.id} className="theme-tag">{tag.name}</span>
+                      <Link
+                        key={tag.id}
+                        to={`/collections/${col.id}/flow?tag=${tag.id}`}
+                        className="theme-tag theme-tag-link"
+                        title="Show this tag in the graph"
+                      >
+                        {tag.name}
+                      </Link>
                     ))}
                   </div>
                 )}
@@ -254,6 +273,9 @@ export default function MoveDetailPage() {
               media={media}
               moveId={move.id}
               isCover={move.cover_media_id === media.id}
+              availableTags={availableMediaTags}
+              refreshToken={mediaTagsVersion}
+              onTagsChanged={() => setMediaTagsVersion((v) => v + 1)}
               onDelete={handleMediaDeleted}
               onRenamed={handleMediaRenamed}
               onSetCover={handleSetCover}

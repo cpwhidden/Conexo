@@ -61,6 +61,15 @@ class CollectionWithMovesResponse(CollectionResponse):
     moves: list[CollectionMoveResponse]
 
 
+class MediaTagLink(BaseModel):
+    """A media item marked with a tag, for a specific move (used by the graph
+    preview to pick the right media when a tag is active)."""
+
+    move_id: uuid.UUID
+    tag_id: uuid.UUID
+    media_id: uuid.UUID
+
+
 class CollectionGraphDataResponse(BaseModel):
     """Combined response for the graph view: collection + full moves + connections + tags."""
 
@@ -68,3 +77,4 @@ class CollectionGraphDataResponse(BaseModel):
     moves: list[MoveGraphData]
     connections: list[ConnectionResponse]
     tags: list[TagResponse] = []
+    media_tags: list[MediaTagLink] = []

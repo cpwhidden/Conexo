@@ -4,6 +4,8 @@ import type { Collection, Move, Tag } from "../../types";
 import client from "../../api/client";
 import { useDropdownKeyNav } from "../../hooks/useDropdownKeyNav";
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || "";
+
 interface MoveDetailPanelProps {
   move: Move;
   collectionId: string;
@@ -11,6 +13,7 @@ interface MoveDetailPanelProps {
   onAddConnection: () => void;
   onEditMove: () => void;
   onDeleteMove?: () => void;
+  onTagClick?: (tag: Tag) => void;
   closing?: boolean;
 }
 
@@ -21,6 +24,7 @@ export default function MoveDetailPanel({
   onAddConnection,
   onEditMove,
   onDeleteMove,
+  onTagClick,
   closing,
 }: MoveDetailPanelProps) {
   // Collection membership state
@@ -32,6 +36,39 @@ export default function MoveDetailPanel({
   const [tagInput, setTagInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
+
+  // Cover media preview (shown above the Timing section when available)
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const [coverType, setCoverType] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!move.cover_media_id) {
+      setCoverUrl(null);
+      setCoverType(null);
+      return;
+    }
+    let cancelled = false;
+    client
+      .get(`/media/${move.cover_media_id}/url`)
+      .then((res) => {
+        if (cancelled) return;
+        let url = res.data.url as string;
+        if (url.startsWith("/")) {
+          const token = localStorage.getItem("access_token");
+          url = `${API_BASE_URL}${url}${url.includes("?") ? "&" : "?"}token=${token}`;
+        }
+        setCoverUrl(url);
+        setCoverType(res.data.content_type || null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setCoverUrl(null);
+        setCoverType(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [move.cover_media_id]);
 
   // Load tags for this move and available tags for the collection
   useEffect(() => {
@@ -144,6 +181,20 @@ export default function MoveDetailPanel({
           <p className="panel-description">{move.description}</p>
         )}
 
+        {/* Cover media */}
+        {coverUrl && (
+          <div className="panel-cover-media">
+            {coverType?.startsWith("video/") ? (
+              <video controls playsInline preload="metadata">
+                {/* #t=0.1 forces the browser to paint a poster frame */}
+                <source src={`${coverUrl}#t=0.1`} type={coverType} />
+              </video>
+            ) : (
+              <img src={coverUrl} alt={`${move.name} cover`} />
+            )}
+          </div>
+        )}
+
         {/* Timing */}
         <div className="panel-section-title">Timing</div>
         <div className="panel-stats">
@@ -223,7 +274,18 @@ export default function MoveDetailPanel({
           <div className="themes-tag-container">
             {moveTags.map((tag) => (
               <span key={tag.id} className="theme-tag">
-                {tag.name}
+                {onTagClick ? (
+                  <button
+                    type="button"
+                    className="theme-tag-name"
+                    onClick={() => onTagClick(tag)}
+                    title="Show this tag in the graph"
+                  >
+                    {tag.name}
+                  </button>
+                ) : (
+                  tag.name
+                )}
                 <button
                   className="theme-tag-remove"
                   onClick={() => handleRemoveTag(tag.id)}

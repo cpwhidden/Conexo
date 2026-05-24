@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Link, useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import client from "../api/client";
+import CollectionTabBar from "../components/CollectionTabBar";
 import ConfirmModal from "../components/ConfirmModal";
 import type { Tag } from "../types";
 
@@ -86,33 +87,35 @@ export default function CollectionTagsPage() {
 
   if (loading) return <div className="loading">Loading...</div>;
 
+  const toolbar = (
+    <div className="tag-manager-create">
+      <input
+        type="text"
+        placeholder="New tag name..."
+        value={newTagName}
+        onChange={(e) => setNewTagName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleCreate();
+        }}
+      />
+      <button
+        className="btn btn-primary"
+        onClick={handleCreate}
+        disabled={!newTagName.trim()}
+      >
+        Create
+      </button>
+    </div>
+  );
+
   return (
     <div className="page">
-      <div className="page-header">
-        <Link to={`/collections/${id}/moves`} className="back-link">
-          &larr; {collectionName}
-        </Link>
-        <h2>Tags</h2>
-      </div>
-
-      <div className="tag-manager-create">
-        <input
-          type="text"
-          placeholder="New tag name..."
-          value={newTagName}
-          onChange={(e) => setNewTagName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleCreate();
-          }}
-        />
-        <button
-          className="btn btn-primary"
-          onClick={handleCreate}
-          disabled={!newTagName.trim()}
-        >
-          Create
-        </button>
-      </div>
+      <CollectionTabBar
+        collectionId={id!}
+        collectionName={collectionName}
+        active="tags"
+        toolbar={toolbar}
+      />
 
       {tags.length === 0 ? (
         <p className="empty-state">No tags yet. Create one above.</p>

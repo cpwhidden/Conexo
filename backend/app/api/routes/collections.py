@@ -25,6 +25,7 @@ from app.schemas.collection import (
     CollectionResponse,
     CollectionUpdate,
     CollectionWithMovesResponse,
+    MediaTagLink,
 )
 from app.schemas.connection import ConnectionResponse
 from app.schemas.move import MoveGraphData
@@ -213,7 +214,12 @@ async def get_collection_graph_data(
             FROM move_cues WHERE move_id = ANY(:mids)
             UNION ALL
             SELECT 'alltag' AS type, id::text, collection_id::text, name, NULL, NULL, NULL, created_at::text, updated_at::text
-            FROM tags WHERE collection_id = :cid ORDER BY type, key1
+            FROM tags WHERE collection_id = :cid
+            UNION ALL
+            SELECT 'mediatag' AS type, mt.media_id::text, mt.move_id::text AS key1, mt.tag_id::text AS key2, NULL, NULL, NULL, NULL, NULL
+            FROM media_tags mt JOIN tags t ON mt.tag_id = t.id
+            WHERE mt.move_id = ANY(:mids) AND t.collection_id = :cid
+            ORDER BY type, key1
         """)
         result = await db.execute(enrichment_sql, {"cid": collection_id, "mids": move_ids})
         rows = result.all()
@@ -223,6 +229,7 @@ async def get_collection_graph_data(
         tag_names_map: dict[uuid.UUID, list[str]] = {}
         cue_descs_map: dict[uuid.UUID, list[str]] = {}
         all_tags = []
+        media_tag_links = []
 
         for row in rows:
             rtype = row[0]
@@ -253,6 +260,13 @@ async def get_collection_graph_data(
                     created_at=datetime.fromisoformat(row[7]),
                     updated_at=datetime.fromisoformat(row[8]),
                 ))
+            elif rtype == "mediatag":
+                # row[1]=media_id, key1(row[2])=move_id, key2(row[3])=tag_id
+                media_tag_links.append(MediaTagLink(
+                    media_id=uuid.UUID(row[1]),
+                    move_id=uuid.UUID(row[2]),
+                    tag_id=uuid.UUID(row[3]),
+                ))
     else:
         move_objects = []
         connection_objects = []
@@ -260,6 +274,7 @@ async def get_collection_graph_data(
         tag_names_map = {}
         cue_descs_map = {}
         all_tags = []
+        media_tag_links = []
 
     # Connection counts
     outgoing_counts: dict[uuid.UUID, int] = {}
@@ -283,6 +298,7 @@ async def get_collection_graph_data(
         moves=enriched_moves,
         connections=[ConnectionResponse.model_validate(c) for c in connection_objects],
         tags=all_tags,
+        media_tags=media_tag_links,
     )
 
 

@@ -33,8 +33,9 @@ function App() {
           <Route path="/moves/:moveId" element={<MoveDetailPage />} />
           <Route path="/moves/:moveId/edit" element={<MoveFormPage />} />
           <Route path="/collections" element={<CollectionsPage />} />
-          <Route path="/collections/:id" element={<Navigate to="graph" replace />} />
+          <Route path="/collections/:id" element={<Navigate to="flow" replace />} />
           <Route path="/collections/:id/moves" element={<CollectionDetailPage />} />
+          <Route path="/collections/:id/flow" element={<CollectionGraphPage />} />
           <Route path="/collections/:id/graph" element={<CollectionGraphPage />} />
           <Route path="/collections/:id/tags" element={<CollectionTagsPage />} />
           <Route path="/collections/:id/tags/:tagId" element={<TagDetailPage />} />

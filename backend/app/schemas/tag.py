@@ -41,3 +41,16 @@ class TaggedMoveResponse(BaseModel):
     name: str
 
     model_config = {"from_attributes": True}
+
+
+class MediaTagAdd(BaseModel):
+    tag_id: uuid.UUID
+
+
+class MediaTagResponse(BaseModel):
+    id: uuid.UUID
+    tag_id: uuid.UUID
+    media_id: uuid.UUID
+    move_id: uuid.UUID
+
+    model_config = {"from_attributes": True}

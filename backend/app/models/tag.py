@@ -57,3 +57,37 @@ class MoveTag(Base):
 
     tag: Mapped["Tag"] = relationship(back_populates="move_tags")
     move: Mapped["Move"] = relationship()  # noqa: F821
+
+
+class MediaTag(Base):
+    """Associates a collection tag with a single media item of a move.
+
+    The UNIQUE(tag_id, move_id) constraint enforces "one media item per tag per
+    move": within a given move, a tag can mark at most one of its media items.
+    move_id is denormalized from the media item so the constraint can be a plain
+    DB-level uniqueness check.
+    """
+
+    __tablename__ = "media_tags"
+    __table_args__ = (
+        UniqueConstraint("tag_id", "move_id", name="uq_media_tag_per_move"),
+        Index("ix_media_tags_tag_id", "tag_id"),
+        Index("ix_media_tags_media_id", "media_id"),
+        Index("ix_media_tags_move_id", "move_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tag_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tags.id", ondelete="CASCADE"), nullable=False
+    )
+    media_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("move_videos.id", ondelete="CASCADE"), nullable=False
+    )
+    move_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("moves.id", ondelete="CASCADE"), nullable=False
+    )
+
+    tag: Mapped["Tag"] = relationship()
+    media: Mapped["MoveVideo"] = relationship()  # noqa: F821

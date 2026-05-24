@@ -27,6 +27,9 @@ interface MoveNodeData {
   };
   componentIndex?: number;
   showComponentColors?: boolean;
+  tagged?: boolean;
+  // When a tag is active, the media item to preview instead of the cover.
+  previewMediaId?: string;
 }
 
 function MoveNode({ data, selected }: NodeProps) {
@@ -36,18 +39,20 @@ function MoveNode({ data, selected }: NodeProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const nodeData = data as unknown as MoveNodeData;
-  const { move, focusPosition, isColumnFirst, onInfoClick, connectionStatus, componentIndex, showComponentColors, showPreview } = nodeData;
+  const { move, focusPosition, isColumnFirst, onInfoClick, connectionStatus, componentIndex, showComponentColors, showPreview, tagged, previewMediaId } = nodeData;
 
-  // Fetch cover media URL for preview
-  // Show on the center node OR on the first move in any column
-  const shouldShowPreview = showPreview && (focusPosition === "center" || isColumnFirst) && move.cover_media_id;
+  // Fetch media URL for preview. When a tag is active and this move has a media
+  // item marked with it, prefer that media; otherwise fall back to the cover.
+  // Show on the center node OR on the first move in any column.
+  const effectiveMediaId = previewMediaId ?? move.cover_media_id;
+  const shouldShowPreview = showPreview && (focusPosition === "center" || isColumnFirst) && effectiveMediaId;
   useEffect(() => {
     if (!shouldShowPreview) {
       setPreviewUrl(null);
       setPreviewType(null);
       return;
     }
-    client.get(`/media/${move.cover_media_id}/url`).then((res) => {
+    client.get(`/media/${effectiveMediaId}/url`).then((res) => {
       let url = res.data.url as string;
       if (url.startsWith("/")) {
         const token = localStorage.getItem("access_token");
@@ -56,7 +61,7 @@ function MoveNode({ data, selected }: NodeProps) {
       setPreviewUrl(url);
       setPreviewType(res.data.content_type || null);
     }).catch(() => { setPreviewUrl(null); setPreviewType(null); });
-  }, [shouldShowPreview, move.cover_media_id]);
+  }, [shouldShowPreview, effectiveMediaId]);
 
   // Show info icon on outer edge in focus mode (always visible, not just on hover)
   const showFocusInfoIcon = focusPosition && onInfoClick;
@@ -91,7 +96,7 @@ function MoveNode({ data, selected }: NodeProps) {
     <div
       className={`graph-node ${move.is_state ? "state-node" : ""} ${selected ? "selected" : ""} ${
         focusPosition ? `focus-${focusPosition}` : ""
-      } ${connectionClasses.join(" ")}`}
+      } ${tagged ? "tagged" : ""} ${connectionClasses.join(" ")}`}
       style={componentStyle}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -113,7 +118,9 @@ function MoveNode({ data, selected }: NodeProps) {
                   if (vid.paused) vid.play().catch(() => {}); else vid.pause();
                 }}
               >
-                <source src={previewUrl} type={previewType || "video/mp4"} />
+                {/* #t=0.1 seeks to 0.1s on load so the browser paints a real
+                    frame as a poster instead of a blank/black box. */}
+                <source src={`${previewUrl}#t=0.1`} type={previewType || "video/mp4"} />
               </video>
               {!isPlaying && (
                 <button

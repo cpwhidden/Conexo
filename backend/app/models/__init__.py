@@ -5,7 +5,7 @@ from app.models.connection import MoveConnection
 from app.models.cue import MoveCue
 from app.models.move import Move
 from app.models.sequence import Sequence, SequenceMove
-from app.models.tag import MoveTag, Tag
+from app.models.tag import MediaTag, MoveTag, Tag
 from app.models.user import User
 from app.models.video import MoveVideo
 
@@ -23,4 +23,5 @@ __all__ = [
     "SequenceMove",
     "Tag",
     "MoveTag",
+    "MediaTag",
 ]

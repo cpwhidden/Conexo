@@ -54,6 +54,9 @@ export default function EditMovePanel({
   // Media state
   const [mediaItems, setMediaItems] = useState<Media[]>([]);
   const [coverMediaId, setCoverMediaId] = useState<string | null>(move.cover_media_id ?? null);
+  // Bumped when a media tag changes so all media players re-fetch their tags
+  // (a tag re-assigns to one media per move).
+  const [mediaTagsVersion, setMediaTagsVersion] = useState(0);
 
   // Tag state (collection-scoped)
   const [allTags, setAllTags] = useState<Tag[]>([]);
@@ -540,6 +543,9 @@ export default function EditMovePanel({
                     media={media}
                     moveId={move.id}
                     isCover={coverMediaId === media.id}
+                    availableTags={allTags}
+                    refreshToken={mediaTagsVersion}
+                    onTagsChanged={() => setMediaTagsVersion((v) => v + 1)}
                     onDelete={(mediaId) => {
                       setMediaItems((prev) => prev.filter((m) => m.id !== mediaId));
                       if (coverMediaId === mediaId) setCoverMediaId(null);
