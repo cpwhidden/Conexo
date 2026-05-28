@@ -52,7 +52,12 @@ function MoveNode({ data, selected }: NodeProps) {
       setPreviewType(null);
       return;
     }
+    // Guard against a stale in-flight fetch resolving after previews are turned
+    // off (or the media changes): toggling Preview on→off quickly must not let
+    // an already-started request re-set the preview.
+    let cancelled = false;
     client.get(`/media/${effectiveMediaId}/url`).then((res) => {
+      if (cancelled) return;
       let url = res.data.url as string;
       if (url.startsWith("/")) {
         const token = localStorage.getItem("access_token");
@@ -60,7 +65,14 @@ function MoveNode({ data, selected }: NodeProps) {
       }
       setPreviewUrl(url);
       setPreviewType(res.data.content_type || null);
-    }).catch(() => { setPreviewUrl(null); setPreviewType(null); });
+    }).catch(() => {
+      if (cancelled) return;
+      setPreviewUrl(null);
+      setPreviewType(null);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [shouldShowPreview, effectiveMediaId]);
 
   // Show info icon on outer edge in focus mode (always visible, not just on hover)

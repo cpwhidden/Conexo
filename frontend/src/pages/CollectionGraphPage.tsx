@@ -623,16 +623,18 @@ function getFocusLayoutElements(
 }
 
 // ─── Tag Focus Layout ──────────────────────────────────────────────────────
-// Level 0: tagged moves are laid out in a single horizontal ROW, each in its
-// own column, ordered left→right by flow (topological order of the tagged
-// sub-graph) so connected tagged moves read as a left-to-right sequence.
-// Then we expand outward, one level at a time:
-//   - Predecessors of a move at column C are placed in column C-1 (left)
-//   - Successors  of a move at column C are placed in column C+1 (right)
-// A move is added to any target column at most once (dedup within column); the
-// same move may appear in multiple columns (duplication). Every edge connects
-// two ADJACENT columns, so arrows never span the whole graph. Tagged moves are
-// highlighted (yellow) on every instance.
+// Tagged moves form a left-to-right BRANCHING tree:
+//   - Column (x) = longest path from a root (a tagged move with no tagged
+//     predecessor), so every tagged→tagged edge points left→right.
+//   - Row (y) is assigned by a left-to-right "barycenter" pass: each tagged
+//     move sits at the average y of its tagged parents, so a move's children
+//     stack in the next column centered on it, and a move with multiple parents
+//     (a merge) is centered among them. Overlaps within a column are pushed
+//     apart evenly.
+// Non-tagged L1..LX neighbors hang off each tagged move (predecessors fan left,
+// successors fan right) and share columns with the tree, resolved together.
+// Tagged moves are highlighted green; flow edges green, incoming blue,
+// outgoing orange.
 function getTagFocusLayoutElements(
   nodes: Node[],
   _edges: Edge[],
@@ -650,11 +652,9 @@ function getTagFocusLayoutElements(
   virtualToRealId: Map<string, string>;
 } {
   const COL_GAP = 280;
-  const ROW_GAP = 80;
-  const START_Y = 0;
-  // A preview floats ABOVE its node (CSS: bottom: 100% + 8px) and is capped at
-  // 360px tall, so a preview-showing move needs this much clearance above it to
-  // avoid covering the move above it in the same column.
+  const ROW_GAP = 90;
+  // A preview floats ABOVE its node (CSS: bottom: 100% + 8px) capped at 360px,
+  // so a preview-showing move needs this much clearance above it.
   const PREVIEW_CLEARANCE = 380;
 
   // Sorting (mirrors getFocusLayoutElements semantics)
@@ -681,254 +681,288 @@ function getTagFocusLayoutElements(
     return 0;
   };
 
-  // Adjacency lists (full graph).
+  // A move shows a preview only when it's tagged (the highlighted "center"
+  // nodes) — keeps clearance math predictable in the branching layout.
+  const showsPreviewFor = (id: string) =>
+    !!(showPreview && taggedMoveIds.has(id) && getMoveData(id)?.cover_media_id);
+
+  // Resolve a column: place items at their desired y, then push down to enforce
+  // a minimum gap (larger above a preview-showing node), and recenter so the
+  // block's mean matches the mean desired y. Writes final y into `out` keyed by
+  // each item's id (a move id or an instance key).
+  const resolveColumn = (
+    items: { id: string; d: number; preview: boolean; sortId: string }[],
+    out: Map<string, number>
+  ) => {
+    if (items.length === 0) return;
+    const sorted = [...items].sort((a, b) => a.d - b.d || compareMoves(a.sortId, b.sortId));
+    const ys: number[] = [];
+    for (let i = 0; i < sorted.length; i++) {
+      const gapAbove = ROW_GAP + (sorted[i].preview ? PREVIEW_CLEARANCE : 0);
+      let y = sorted[i].d;
+      if (i > 0) y = Math.max(y, ys[i - 1] + gapAbove);
+      ys.push(y);
+    }
+    const meanD = sorted.reduce((s, it) => s + it.d, 0) / sorted.length;
+    const meanY = ys.reduce((s, v) => s + v, 0) / ys.length;
+    const shift = meanD - meanY;
+    sorted.forEach((it, i) => out.set(it.id, ys[i] + shift));
+  };
+
+  // Full-graph adjacency.
   const succOf = new Map<string, Set<string>>();
   const predOf = new Map<string, Set<string>>();
+  const connLookup = new Map<string, Connection>();
   for (const c of connections) {
     if (c.source_move_id === c.target_move_id) continue;
     if (!succOf.has(c.source_move_id)) succOf.set(c.source_move_id, new Set());
     succOf.get(c.source_move_id)!.add(c.target_move_id);
     if (!predOf.has(c.target_move_id)) predOf.set(c.target_move_id, new Set());
     predOf.get(c.target_move_id)!.add(c.source_move_id);
+    connLookup.set(`${c.source_move_id}|${c.target_move_id}`, c);
   }
 
-  // 1. Order tagged moves left→right by flow. Use a DFS reverse post-order
-  //    topological sort of the tagged sub-graph so connected chains stay
-  //    contiguous (A→B→C land in consecutive columns). Sources first, ties
-  //    broken by the active sort criterion. Each tagged move gets a UNIQUE
-  //    sequential column so they form a single row.
+  // Tagged sub-graph (edges between two tagged moves).
   const taggedArr = [...taggedMoveIds];
   const tagSucc = new Map<string, Set<string>>();
-  const tagInDeg = new Map<string, number>();
+  const tagPred = new Map<string, Set<string>>();
   taggedArr.forEach((id) => {
     tagSucc.set(id, new Set());
-    tagInDeg.set(id, 0);
+    tagPred.set(id, new Set());
   });
   for (const c of connections) {
     if (c.source_move_id === c.target_move_id) continue;
     if (taggedMoveIds.has(c.source_move_id) && taggedMoveIds.has(c.target_move_id)) {
-      const ss = tagSucc.get(c.source_move_id)!;
-      if (!ss.has(c.target_move_id)) {
-        ss.add(c.target_move_id);
-        tagInDeg.set(c.target_move_id, (tagInDeg.get(c.target_move_id) ?? 0) + 1);
-      }
+      tagSucc.get(c.source_move_id)!.add(c.target_move_id);
+      tagPred.get(c.target_move_id)!.add(c.source_move_id);
     }
   }
 
-  const visited = new Set<string>();
-  const postOrder: string[] = [];
-  const dfs = (id: string) => {
-    if (visited.has(id)) return;
-    visited.add(id);
-    for (const s of [...(tagSucc.get(id) ?? [])].sort(compareMoves)) dfs(s);
-    postOrder.push(id);
-  };
-  // Sources (no tagged predecessor) first, in criterion order; then any leftover
-  // (e.g. members of a cycle) so every tagged move is placed.
-  const sources = taggedArr.filter((id) => (tagInDeg.get(id) ?? 0) === 0).sort(compareMoves);
-  for (const id of sources) dfs(id);
-  for (const id of taggedArr.slice().sort(compareMoves)) dfs(id);
-
+  // 1. Longest-path columns. Topological order via DFS (back edges in cycles
+  //    are skipped), then col = max(parent col)+1.
   const tagColumn = new Map<string, number>();
-  postOrder.reverse().forEach((id, idx) => tagColumn.set(id, idx));
-  const colCursor = postOrder.length;
+  {
+    const onStack = new Set<string>();
+    const done = new Set<string>();
+    const topo: string[] = [];
+    const visit = (id: string) => {
+      if (done.has(id) || onStack.has(id)) return;
+      onStack.add(id);
+      for (const s of [...(tagSucc.get(id) ?? [])].sort(compareMoves)) visit(s);
+      onStack.delete(id);
+      done.add(id);
+      topo.push(id);
+    };
+    for (const id of [...taggedArr].sort(compareMoves)) visit(id);
+    topo.reverse(); // sources first
+    for (const id of topo) {
+      let col = 0;
+      for (const p of tagPred.get(id) ?? []) {
+        if (tagColumn.has(p)) col = Math.max(col, tagColumn.get(p)! + 1);
+      }
+      tagColumn.set(id, col);
+    }
+  }
 
-  // columnMoves[col] = Set<realMoveId> (dedup within column).
-  const columnMoves = new Map<number, Set<string>>();
-  let minCol = 0;
-  let maxCol = Math.max(0, colCursor - 1);
+  // 2. Barycenter pass (left→right) to assign tagged y. Each tagged move sits at
+  //    the mean y of its tagged parents; roots (column 0) are laid out in order.
+  const taggedByCol = new Map<number, string[]>();
+  for (const id of taggedArr) {
+    const col = tagColumn.get(id) ?? 0;
+    if (!taggedByCol.has(col)) taggedByCol.set(col, []);
+    taggedByCol.get(col)!.push(id);
+  }
+  const tagCols = [...taggedByCol.keys()].sort((a, b) => a - b);
+  const tagY = new Map<string, number>();
+  let rootCursor = 0;
+  for (const col of tagCols) {
+    const ids = taggedByCol.get(col)!;
+    const items = ids.map((id) => {
+      const preview = showsPreviewFor(id);
+      const parents = [...(tagPred.get(id) ?? [])].filter((p) => tagY.has(p));
+      if (parents.length === 0) {
+        const d = rootCursor;
+        rootCursor += ROW_GAP + (preview ? PREVIEW_CLEARANCE : 0);
+        return { id, d, preview, sortId: id };
+      }
+      const d = parents.reduce((s, p) => s + tagY.get(p)!, 0) / parents.length;
+      return { id, d, preview, sortId: id };
+    });
+    resolveColumn(items, tagY);
+  }
 
-  const ensureCol = (col: number) => {
-    if (!columnMoves.has(col)) columnMoves.set(col, new Set());
-    if (col < minCol) minCol = col;
-    if (col > maxCol) maxCol = col;
-    return columnMoves.get(col)!;
+  // 3. Expand into INSTANCES, enforcing strict adjacency by duplication. Each
+  //    instance is a (moveId, column) pair; a move may appear in several columns
+  //    but only once per column. Every drawn edge connects adjacent columns.
+  //
+  //    Expansion is directional: tagged moves (seeded at their tree column) fan
+  //    successors RIGHT and predecessors LEFT. A successor-side node only keeps
+  //    fanning right; a predecessor-side node only keeps fanning left — so a
+  //    neighbor never pulls in its OWN far connections (no spanning edges).
+  //    Tagged→tagged edges always continue the flow (so a backward/long flow
+  //    edge duplicates its target into the adjacent column); non-tagged
+  //    neighbors are gated by maxLevel. Tagged duplicates are stubs (the move's
+  //    own tree instance does the real expansion), preventing runaway growth.
+  interface Inst {
+    moveId: string;
+    col: number;
+    side: "left" | "center" | "right";
+    desiredY: number;
+  }
+  const instKey = (moveId: string, col: number) => `${moveId}__c${col}`;
+  const instById = new Map<string, Inst>();
+  const colOccupant = new Map<number, Set<string>>(); // col → moveIds present
+  let minCol = Infinity;
+  let maxCol = -Infinity;
+
+  const placeInst = (
+    moveId: string,
+    col: number,
+    side: "left" | "center" | "right",
+    desiredY: number
+  ): { key: string; isNew: boolean } => {
+    const key = instKey(moveId, col);
+    if (instById.has(key)) return { key, isNew: false };
+    instById.set(key, { moveId, col, side, desiredY });
+    if (!colOccupant.has(col)) colOccupant.set(col, new Set());
+    colOccupant.get(col)!.add(moveId);
+    minCol = Math.min(minCol, col);
+    maxCol = Math.max(maxCol, col);
+    return { key, isNew: true };
   };
 
-  // The anchor move of each column (its tagged owner) — kept at row 0.
-  const columnAnchor = new Map<number, string>();
+  // Bounds keep cyclic backbones (A→B→A) from duplicating forever.
+  const numTagged = taggedArr.length;
+  const maxTreeCol = tagCols.length ? Math.max(...tagCols) : 0;
+  const COL_MAX = maxTreeCol + numTagged + maxLevel + 2;
+  const COL_MIN = -(numTagged + maxLevel + 2);
 
-  // Level 0: place each tagged move in its own column (a single top row).
-  taggedArr.forEach((id) => {
-    const col = tagColumn.get(id)!;
-    ensureCol(col).add(id);
-    columnAnchor.set(col, id);
-  });
+  // Edges between instances (adjacent columns only).
+  const edgeOut: Array<{ srcKey: string; tgtKey: string; conn: Connection; kind: "flow" | "incoming" | "outgoing" }> = [];
+  const edgeSeen = new Set<string>();
+  const addEdge = (srcKey: string, tgtKey: string, conn: Connection, kind: "flow" | "incoming" | "outgoing") => {
+    const k = `${srcKey}->${tgtKey}`;
+    if (edgeSeen.has(k)) return;
+    edgeSeen.add(k);
+    edgeOut.push({ srcKey, tgtKey, conn, kind });
+  };
 
-  interface EdgeSpec {
-    src: string;
-    srcCol: number;
-    tgt: string;
-    tgtCol: number;
-    conn: Connection;
-    // "flow": tagged→tagged (Level 0 sequence). "incoming": predecessor side.
-    // "outgoing": successor side. Drives edge color (green / blue / orange).
-    kind: "flow" | "incoming" | "outgoing";
-  }
-  const edgeSpecs: EdgeSpec[] = [];
-
-  const connLookup = new Map<string, Connection>();
-  for (const c of connections) connLookup.set(`${c.source_move_id}|${c.target_move_id}`, c);
-
-  // Predecessor BFS — fan LEFT from every tagged move at its column.
-  let frontier: Array<{ id: string; col: number }> = taggedArr.map((id) => ({ id, col: tagColumn.get(id)! }));
-  for (let L = 1; L <= maxLevel; L++) {
-    const next: Array<{ id: string; col: number }> = [];
-    for (const { id: M, col: C } of frontier) {
-      const targetCol = C - 1;
-      const colSet = ensureCol(targetCol);
-      for (const P of predOf.get(M) ?? []) {
-        const conn = connLookup.get(`${P}|${M}`);
-        if (!conn) continue;
-        if (!colSet.has(P)) {
-          colSet.add(P);
-          next.push({ id: P, col: targetCol });
-        }
-        const kind = taggedMoveIds.has(P) && taggedMoveIds.has(M) ? "flow" : "incoming";
-        edgeSpecs.push({ src: P, srcCol: targetCol, tgt: M, tgtCol: C, conn, kind });
-      }
-    }
-    if (next.length === 0) break;
-    frontier = next;
+  // Seed every tagged move at its tree position and queue both directions.
+  type Task = { moveId: string; col: number; depth: number; dir: "succ" | "pred" };
+  const queue: Task[] = [];
+  for (const id of taggedArr) {
+    const col = tagColumn.get(id) ?? 0;
+    placeInst(id, col, "center", tagY.get(id) ?? 0);
+    queue.push({ moveId: id, col, depth: 0, dir: "succ" });
+    queue.push({ moveId: id, col, depth: 0, dir: "pred" });
   }
 
-  // Successor BFS — fan RIGHT from every tagged move at its column.
-  frontier = taggedArr.map((id) => ({ id, col: tagColumn.get(id)! }));
-  for (let L = 1; L <= maxLevel; L++) {
-    const next: Array<{ id: string; col: number }> = [];
-    for (const { id: M, col: C } of frontier) {
-      const targetCol = C + 1;
-      const colSet = ensureCol(targetCol);
-      for (const S of succOf.get(M) ?? []) {
+  while (queue.length) {
+    const { moveId: M, col: c, depth, dir } = queue.shift()!;
+    const srcInst = instById.get(instKey(M, c))!;
+    if (dir === "succ") {
+      const newCol = c + 1;
+      if (newCol > COL_MAX) continue;
+      for (const S of [...(succOf.get(M) ?? [])].sort(compareMoves)) {
+        const sTagged = taggedMoveIds.has(S);
+        const newDepth = sTagged ? 0 : depth + 1;
+        if (!sTagged && newDepth > maxLevel) continue;
+        const { key: tgtKey, isNew } = placeInst(
+          S,
+          newCol,
+          sTagged ? "center" : "right",
+          srcInst.desiredY
+        );
         const conn = connLookup.get(`${M}|${S}`);
-        if (!conn) continue;
-        if (!colSet.has(S)) {
-          colSet.add(S);
-          next.push({ id: S, col: targetCol });
-        }
-        const kind = taggedMoveIds.has(M) && taggedMoveIds.has(S) ? "flow" : "outgoing";
-        edgeSpecs.push({ src: M, srcCol: C, tgt: S, tgtCol: targetCol, conn, kind });
+        if (conn) addEdge(instKey(M, c), tgtKey, conn, taggedMoveIds.has(M) && sTagged ? "flow" : "outgoing");
+        // Only non-tagged neighbors keep expanding; tagged duplicates are stubs.
+        if (isNew && !sTagged) queue.push({ moveId: S, col: newCol, depth: newDepth, dir: "succ" });
       }
-    }
-    if (next.length === 0) break;
-    frontier = next;
-  }
-
-  // At L0 the BFS doesn't run, so the Level-0 flow edges between tagged moves
-  // aren't created above. Add them directly between tagged anchor instances so
-  // the tagged sequence still reads as a connected flow with no neighbors.
-  if (maxLevel === 0) {
-    for (const conn of connections) {
-      if (conn.source_move_id === conn.target_move_id) continue;
-      if (
-        taggedMoveIds.has(conn.source_move_id) &&
-        taggedMoveIds.has(conn.target_move_id)
-      ) {
-        const srcCol = tagColumn.get(conn.source_move_id);
-        const tgtCol = tagColumn.get(conn.target_move_id);
-        if (srcCol === undefined || tgtCol === undefined) continue;
-        edgeSpecs.push({
-          src: conn.source_move_id,
-          srcCol,
-          tgt: conn.target_move_id,
-          tgtCol,
-          conn,
-          kind: "flow",
-        });
+    } else {
+      const newCol = c - 1;
+      if (newCol < COL_MIN) continue;
+      for (const P of [...(predOf.get(M) ?? [])].sort(compareMoves)) {
+        const pTagged = taggedMoveIds.has(P);
+        const newDepth = pTagged ? 0 : depth + 1;
+        if (!pTagged && newDepth > maxLevel) continue;
+        const { key: srcKey, isNew } = placeInst(
+          P,
+          newCol,
+          pTagged ? "center" : "left",
+          srcInst.desiredY
+        );
+        const conn = connLookup.get(`${P}|${M}`);
+        if (conn) addEdge(srcKey, instKey(M, c), conn, pTagged && taggedMoveIds.has(M) ? "flow" : "incoming");
+        if (isNew && !pTagged) queue.push({ moveId: P, col: newCol, depth: newDepth, dir: "pred" });
       }
     }
   }
 
-  // Position nodes. Within each column: the column's tagged anchor at row 0,
-  // then any other tagged duplicates, then non-tagged neighbors — each group
-  // sorted by the active criterion.
+  if (!Number.isFinite(minCol)) {
+    minCol = 0;
+    maxCol = 0;
+  }
+
+  // 4. Per-column overlap resolution over all instances.
+  const finalY = new Map<string, number>(); // instance key → y
+  for (let col = minCol; col <= maxCol; col++) {
+    const occ = colOccupant.get(col);
+    if (!occ) continue;
+    const items = [...occ].map((moveId) => {
+      const inst = instById.get(instKey(moveId, col))!;
+      return { id: instKey(moveId, col), d: inst.desiredY, preview: showsPreviewFor(moveId), sortId: moveId };
+    });
+    resolveColumn(items, finalY);
+  }
+
+  // 5. Positioned nodes (one per instance). Topmost instance per column gets
+  //    isColumnFirst; tagged moves preview via "center".
   const positionedNodes: Node[] = [];
   const focusPositions = new Map<string, "left" | "center" | "right">();
   const virtualToRealId = new Map<string, string>();
-  const vidOf = (moveId: string, col: number) => `${moveId}_tagcol_${col}`;
 
   for (let col = minCol; col <= maxCol; col++) {
-    const set = columnMoves.get(col);
-    if (!set || set.size === 0) continue;
-    const ids = [...set];
-    const anchor = columnAnchor.get(col);
-    const anchorArr = anchor && set.has(anchor) ? [anchor] : [];
-    const taggedInCol = ids
-      .filter((id) => taggedMoveIds.has(id) && id !== anchor)
-      .sort(compareMoves);
-    const otherInCol = ids.filter((id) => !taggedMoveIds.has(id)).sort(compareMoves);
-    const ordered = [...anchorArr, ...taggedInCol, ...otherInCol];
-
-    let y = START_Y;
-    ordered.forEach((realMoveId, rowIdx) => {
-      const realNode = nodes.find((n) => n.id === realMoveId);
-      if (!realNode) return;
-
-      const isTagged = taggedMoveIds.has(realMoveId);
-      // A node renders its cover preview when previews are on and it's either a
-      // tagged ("center") node or the first node in the column.
-      const showsPreview = !!(
-        showPreview &&
-        getMoveData(realMoveId)?.cover_media_id &&
-        (isTagged || rowIdx === 0)
-      );
-
-      // Advance y. The preview floats UP from the node, so a preview-showing
-      // move (other than the first row) needs extra clearance above it so it
-      // doesn't cover the move above.
-      if (rowIdx > 0) {
-        y += ROW_GAP + (showsPreview ? PREVIEW_CLEARANCE : 0);
-      }
-
-      const vId = vidOf(realMoveId, col);
-      virtualToRealId.set(vId, realMoveId);
-
-      const x = (col - minCol) * COL_GAP;
-
-      // Tagged moves are styled as "center" (yellow). Non-tagged use a side
-      // for text alignment based on which way they were expanded.
-      const focusPos: "left" | "center" | "right" = isTagged
-        ? "center"
-        : col <= (anchor ? tagColumn.get(anchor) ?? col : col)
-        ? "left"
-        : "right";
-
+    const occ = colOccupant.get(col);
+    if (!occ) continue;
+    const keys = [...occ].map((moveId) => instKey(moveId, col));
+    const topKey = keys.reduce(
+      (best, k) => ((finalY.get(k) ?? 0) < (finalY.get(best) ?? 0) ? k : best),
+      keys[0]
+    );
+    for (const moveId of occ) {
+      const realNode = nodes.find((n) => n.id === moveId);
+      if (!realNode) continue;
+      const key = instKey(moveId, col);
+      const inst = instById.get(key)!;
+      virtualToRealId.set(key, moveId);
       positionedNodes.push({
         ...realNode,
-        id: vId,
-        position: { x, y },
+        id: key,
+        position: { x: (col - minCol) * COL_GAP, y: finalY.get(key) ?? 0 },
         data: {
           ...realNode.data,
-          focusPosition: focusPos,
-          isColumnFirst: rowIdx === 0,
-          realMoveId,
+          focusPosition: inst.side,
+          isColumnFirst: key === topKey,
+          realMoveId: moveId,
         },
       });
-      focusPositions.set(vId, focusPos);
-    });
+      focusPositions.set(key, inst.side);
+    }
   }
 
-  // Build edges from the adjacent-column specs. Dedup identical instance pairs.
+  // 6. Build edges from the collected adjacent-column instance pairs.
+  const placedKeys = new Set(positionedNodes.map((n) => n.id));
   const filteredEdges: Edge[] = [];
-  const addedEdges = new Set<string>();
-  const placedVids = new Set(positionedNodes.map((n) => n.id));
-
-  for (const spec of edgeSpecs) {
-    const srcVid = vidOf(spec.src, spec.srcCol);
-    const tgtVid = vidOf(spec.tgt, spec.tgtCol);
-    if (!placedVids.has(srcVid) || !placedVids.has(tgtVid)) continue;
-    const edgeKey = `${srcVid}__${tgtVid}`;
-    if (addedEdges.has(edgeKey)) continue;
-    addedEdges.add(edgeKey);
-
+  for (const e of edgeOut) {
+    if (!placedKeys.has(e.srcKey) || !placedKeys.has(e.tgtKey)) continue;
     filteredEdges.push({
-      id: `${spec.conn.id}_${srcVid}_${tgtVid}`,
-      source: srcVid,
-      target: tgtVid,
+      id: `${e.conn.id}_${e.srcKey}_${e.tgtKey}`,
+      source: e.srcKey,
+      target: e.tgtKey,
       type: "smoothstep",
       markerEnd: { type: MarkerType.ArrowClosed },
-      label: spec.conn.label || undefined,
-      data: { connection: spec.conn, tagEdgeKind: spec.kind },
+      label: e.conn.label || undefined,
+      data: { connection: e.conn, tagEdgeKind: e.kind },
     });
   }
 
