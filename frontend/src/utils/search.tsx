@@ -35,8 +35,13 @@ export function highlightTerms(
     .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const regex = new RegExp(`(${escaped.join("|")})`, "gi");
 
+  // Splitting on a capturing group yields the matched terms as their own
+  // entries; those are exactly the search terms (case-insensitively), so test
+  // membership directly instead of a stateful global-regex .test() (whose
+  // lastIndex would carry over between calls and mis-highlight).
+  const termSet = new Set(terms);
   const parts = text.split(regex);
   return parts.map((part, i) =>
-    regex.test(part) ? <mark key={i}>{part}</mark> : part
+    part && termSet.has(part.toLowerCase()) ? <mark key={i}>{part}</mark> : part
   );
 }

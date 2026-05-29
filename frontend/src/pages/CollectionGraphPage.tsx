@@ -2734,7 +2734,9 @@ export default function CollectionGraphPage() {
                           onClick={() => handleTagSearchSelect(tag)}
                         >
                           <span className="option-tag-marker">#</span>
-                          {highlightTerms(tag.name, graphSearch)}
+                          {/* Wrap in one span so the flex gap doesn't fall
+                              between the highlightTerms text segments. */}
+                          <span className="option-tag-name">{highlightTerms(tag.name, graphSearch)}</span>
                         </div>
                       ))}
                     </>
