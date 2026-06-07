@@ -5,8 +5,12 @@ import { trimVideo } from "../utils/ffmpeg";
 
 interface MediaUploadDialogProps {
   file: File;
-  moveId: string;
-  onUploaded: (media: Media) => void;
+  /** When set, the dialog uploads immediately to this move. Omit to stage locally. */
+  moveId?: string;
+  /** Called after a successful upload (immediate mode). */
+  onUploaded?: (media: Media) => void;
+  /** Called with the processed (renamed/trimmed) file (staging mode). */
+  onStaged?: (file: File) => void;
   onCancel: () => void;
 }
 
@@ -30,6 +34,7 @@ export default function MediaUploadDialog({
   file,
   moveId,
   onUploaded,
+  onStaged,
   onCancel,
 }: MediaUploadDialogProps) {
   const [filename, setFilename] = useState(stripExtension(file.name));
@@ -103,7 +108,6 @@ export default function MediaUploadDialog({
     const ext = getExtension(file.name);
 
     setError(null);
-    setUploading(true);
 
     try {
       let blob: Blob = file;
@@ -121,18 +125,28 @@ export default function MediaUploadDialog({
         type: file.type,
       });
 
-      const formData = new FormData();
-      formData.append("file", renamedFile);
-      const res = await client.post(`/moves/${moveId}/media`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      onUploaded(res.data);
+      if (moveId) {
+        setUploading(true);
+        const formData = new FormData();
+        formData.append("file", renamedFile);
+        const res = await client.post(`/moves/${moveId}/media`, formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        onUploaded?.(res.data);
+      } else {
+        // Staging mode: hand the processed file back to the parent.
+        onStaged?.(renamedFile);
+      }
     } catch {
-      setError("Upload failed. Please try again.");
+      setError(
+        moveId
+          ? "Upload failed. Please try again."
+          : "Failed to process media. Please try again."
+      );
       setTrimming(false);
       setUploading(false);
     }
-  }, [filename, file, moveId, onUploaded, showTrim, trimStart, trimEnd]);
+  }, [filename, file, moveId, onUploaded, onStaged, showTrim, trimStart, trimEnd]);
 
   const isVideo = file.type.startsWith("video/");
   const busy = uploading || trimming || ffmpegLoading;
@@ -154,7 +168,7 @@ export default function MediaUploadDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="upload-dialog-header">
-          <h3 className="modal-title">Upload Media</h3>
+          <h3 className="modal-title">{moveId ? "Upload Media" : "Add Media"}</h3>
           <button
             className="btn-icon"
             onClick={onCancel}
@@ -277,7 +291,13 @@ export default function MediaUploadDialog({
             onClick={handleUpload}
             disabled={busy || !filename.trim()}
           >
-            {trimming ? "Trimming..." : uploading ? "Uploading..." : "Upload"}
+            {trimming
+              ? "Trimming..."
+              : uploading
+                ? "Uploading..."
+                : moveId
+                  ? "Upload"
+                  : "Add"}
           </button>
         </div>
       </div>

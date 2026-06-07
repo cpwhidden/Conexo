@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import client from "../api/client";
 import CuesSection from "../components/CuesSection";
+import MediaStaging from "../components/MediaStaging";
 import TagEditor from "../components/TagEditor";
 import type { Collection, Cue, MoveCreate } from "../types";
 
@@ -41,6 +42,10 @@ export default function MoveFormPage() {
   const [cues, setCues] = useState<Cue[]>([]);
   const [moveCollections, setMoveCollections] = useState<Collection[]>([]);
   const [saving, setSaving] = useState(false);
+  // New-move media staged locally, uploaded after the move is created.
+  const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [createdMoveId, setCreatedMoveId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!moveId) return;
@@ -85,6 +90,7 @@ export default function MoveFormPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setMediaError(null);
     try {
       const payload = {
         ...form,
@@ -98,16 +104,40 @@ export default function MoveFormPage() {
         navigate(`/moves/${moveId}`);
       } else {
         const res = await client.post("/moves", payload);
+        const newMoveId = res.data.id;
         // Bulk-create cues for new move
         for (const cue of cues) {
-          await client.post(`/moves/${res.data.id}/cues`, {
+          await client.post(`/moves/${newMoveId}/cues`, {
             beat: cue.beat,
             person: cue.person,
             body_part: cue.body_part,
             description: cue.description,
           });
         }
-        navigate(`/moves/${res.data.id}`);
+        // Upload any staged media now that the move exists.
+        const failed: string[] = [];
+        for (const file of mediaFiles) {
+          try {
+            const formData = new FormData();
+            formData.append("file", file);
+            await client.post(`/moves/${newMoveId}/media`, formData, {
+              headers: { "Content-Type": "multipart/form-data" },
+            });
+          } catch {
+            failed.push(file.name);
+          }
+        }
+        if (failed.length > 0) {
+          // Move is created; surface partial-upload failures without losing it.
+          setCreatedMoveId(newMoveId);
+          setMediaError(
+            `Move created, but these files failed to upload: ${failed.join(
+              ", "
+            )}. Open the move to retry.`
+          );
+          return;
+        }
+        navigate(`/moves/${newMoveId}`);
       }
     } finally {
       setSaving(false);
@@ -199,6 +229,14 @@ export default function MoveFormPage() {
           onCuesChange={setCues}
           localMode={!isEditing}
         />
+
+        {/* Media (new moves only; existing moves manage media on the detail page) */}
+        {!isEditing && (
+          <div className="form-section">
+            <div className="form-section-title">Media</div>
+            <MediaStaging files={mediaFiles} onFilesChange={setMediaFiles} />
+          </div>
+        )}
 
         {/* Timing */}
         <div className="form-section">
@@ -386,8 +424,30 @@ export default function MoveFormPage() {
           </label>
         </div>
 
+        {mediaError && (
+          <div className="media-upload-error">
+            {mediaError}
+            {createdMoveId && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  className="btn-link-small"
+                  onClick={() => navigate(`/moves/${createdMoveId}`)}
+                >
+                  Open move →
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         <div className="form-actions">
-          <button type="submit" className="btn btn-primary" disabled={saving}>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={saving || !!createdMoveId}
+          >
             {saving ? "Saving..." : isEditing ? "Update Move" : "Create Move"}
           </button>
           <button

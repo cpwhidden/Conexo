@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import type { Connection, Move, MoveCreate, Tag, Cue } from "../../types";
 import CuesSection from "../CuesSection";
+import MediaStaging from "../MediaStaging";
 import client from "../../api/client";
 import { multiTermMatch, highlightTerms } from "../../utils/search";
 import { useDropdownKeyNav } from "../../hooks/useDropdownKeyNav";
@@ -78,6 +79,12 @@ export default function AddConnectionPanel({
 
   // Cues state for new move form
   const [newMoveCues, setNewMoveCues] = useState<Cue[]>([]);
+
+  // Media staged locally, uploaded after the move is created.
+  const [newMoveMedia, setNewMoveMedia] = useState<File[]>([]);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  // Set once the move row exists, so a retry doesn't recreate it.
+  const [createdMoveId, setCreatedMoveId] = useState<string | null>(null);
 
   // Tag state for new move form
   // pendingTagNames tracks tags typed by the user that don't exist yet.
@@ -275,43 +282,76 @@ export default function AddConnectionPanel({
     if (!newMoveForm.name.trim()) return;
 
     setCreatingMove(true);
+    setMediaError(null);
     try {
-      const payload = {
-        ...newMoveForm,
-        description: newMoveForm.description || null,
-        leader_styling: newMoveForm.leader_styling || null,
-        follower_styling: newMoveForm.follower_styling || null,
-        learning_notes: newMoveForm.learning_notes || null,
-        collection_id: collectionId,
-      };
-      const res = await client.post("/moves", payload);
-      const newMoveId = res.data.id;
+      // If a previous attempt already created the move (e.g. media upload
+      // failed and the user is retrying), reuse it instead of duplicating.
+      let newMoveId: string | null = createdMoveId;
+      if (!newMoveId) {
+        const payload = {
+          ...newMoveForm,
+          description: newMoveForm.description || null,
+          leader_styling: newMoveForm.leader_styling || null,
+          follower_styling: newMoveForm.follower_styling || null,
+          learning_notes: newMoveForm.learning_notes || null,
+          collection_id: collectionId,
+        };
+        const res = await client.post("/moves", payload);
+        newMoveId = res.data.id as string;
+        setCreatedMoveId(newMoveId);
 
-      // Assign selected tags to the new move.
-      // Pending tags (created locally) are persisted to the DB here.
-      for (const tag of selectedTags) {
-        let tagId = tag.id;
-        if (pendingTagNames.has(tag.name)) {
-          const createRes = await client.post(`/collections/${collectionId}/tags`, {
-            name: tag.name,
-          });
-          tagId = createRes.data.id;
+        // Assign selected tags to the new move.
+        // Pending tags (created locally) are persisted to the DB here.
+        for (const tag of selectedTags) {
+          let tagId = tag.id;
+          if (pendingTagNames.has(tag.name)) {
+            const createRes = await client.post(`/collections/${collectionId}/tags`, {
+              name: tag.name,
+            });
+            tagId = createRes.data.id;
+          }
+          await client.post(`/collections/${collectionId}/tags/${tagId}/moves`, { move_id: newMoveId });
         }
-        await client.post(`/collections/${collectionId}/tags/${tagId}/moves`, { move_id: newMoveId });
+
+        // Create cues for the new move
+        for (const cue of newMoveCues) {
+          await client.post(`/moves/${newMoveId}/cues`, {
+            beat: cue.beat,
+            person: cue.person,
+            body_part: cue.body_part,
+            description: cue.description,
+          });
+        }
+
+        // Add to collection
+        await onAddMoveToCollection(newMoveId);
       }
 
-      // Create cues for the new move
-      for (const cue of newMoveCues) {
-        await client.post(`/moves/${newMoveId}/cues`, {
-          beat: cue.beat,
-          person: cue.person,
-          body_part: cue.body_part,
-          description: cue.description,
-        });
-      }
+      if (!newMoveId) return; // unreachable; satisfies the type narrowing
 
-      // Add to collection
-      await onAddMoveToCollection(newMoveId);
+      // Upload staged media now that the move exists. Keep any that fail so
+      // a resubmit retries only those without recreating the move.
+      const failed: File[] = [];
+      for (const file of newMoveMedia) {
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+          await client.post(`/moves/${newMoveId}/media`, formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+        } catch {
+          failed.push(file);
+        }
+      }
+      if (failed.length > 0) {
+        setNewMoveMedia(failed);
+        setMediaError(
+          `These files failed to upload: ${failed
+            .map((f) => f.name)
+            .join(", ")}. Retry, or cancel to keep the move without them.`
+        );
+        return;
+      }
 
       // Auto-select the new move
       setTargetMoveId(newMoveId);
@@ -343,6 +383,8 @@ export default function AddConnectionPanel({
       });
       setSelectedTags([]);
       setNewMoveCues([]);
+      setNewMoveMedia([]);
+      setCreatedMoveId(null);
     } finally {
       setCreatingMove(false);
     }
@@ -394,6 +436,9 @@ export default function AddConnectionPanel({
 
   const handleCloseNewMoveForm = () => {
     setClosingNewMoveForm(true);
+    setMediaError(null);
+    setNewMoveMedia([]);
+    setCreatedMoveId(null);
     setTimeout(() => {
       setShowNewMoveForm(false);
       setClosingNewMoveForm(false);
@@ -443,6 +488,12 @@ export default function AddConnectionPanel({
             localMode
             defaultExpanded={false}
           />
+
+          {/* Media */}
+          <div className="form-section">
+            <div className="form-section-title">Media</div>
+            <MediaStaging files={newMoveMedia} onFilesChange={setNewMoveMedia} />
+          </div>
 
           {/* Timing */}
           <div className="form-section">
@@ -673,13 +724,19 @@ export default function AddConnectionPanel({
             </div>
           </div>
 
+          {mediaError && <p className="media-upload-error">{mediaError}</p>}
+
           <div className="slide-panel-actions">
             <button
               type="submit"
               className="btn btn-primary"
               disabled={creatingMove || !newMoveForm.name.trim()}
             >
-              {creatingMove ? "Creating..." : "Create Move"}
+              {creatingMove
+                ? "Creating..."
+                : createdMoveId
+                  ? "Retry Upload"
+                  : "Create Move"}
             </button>
             <button
               type="button"

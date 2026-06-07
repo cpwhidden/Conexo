@@ -3,11 +3,19 @@ import type { Media } from "../types";
 import MediaUploadDialog from "./MediaUploadDialog";
 
 interface MediaUploadProps {
-  moveId: string;
-  onUploaded: (media: Media) => void;
+  /** When set, files upload immediately to this move. Omit for local staging. */
+  moveId?: string;
+  /** Called after a successful upload (immediate mode). */
+  onUploaded?: (media: Media) => void;
+  /** Called with the processed file instead of uploading (staging mode). */
+  onStaged?: (file: File) => void;
 }
 
-export default function MediaUpload({ moveId, onUploaded }: MediaUploadProps) {
+export default function MediaUpload({
+  moveId,
+  onUploaded,
+  onStaged,
+}: MediaUploadProps) {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,9 +88,18 @@ export default function MediaUpload({ moveId, onUploaded }: MediaUploadProps) {
     (media: Media) => {
       setPendingFile(null);
       if (fileRef.current) fileRef.current.value = "";
-      onUploaded(media);
+      onUploaded?.(media);
     },
     [onUploaded]
+  );
+
+  const handleDialogStaged = useCallback(
+    (file: File) => {
+      setPendingFile(null);
+      if (fileRef.current) fileRef.current.value = "";
+      onStaged?.(file);
+    },
+    [onStaged]
   );
 
   return (
@@ -115,6 +132,7 @@ export default function MediaUpload({ moveId, onUploaded }: MediaUploadProps) {
           file={pendingFile}
           moveId={moveId}
           onUploaded={handleDialogUploaded}
+          onStaged={handleDialogStaged}
           onCancel={handleDialogCancel}
         />
       )}
