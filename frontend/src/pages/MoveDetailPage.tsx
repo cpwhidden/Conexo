@@ -244,25 +244,7 @@ export default function MoveDetailPage() {
         </div>
       )}
 
-      {/* Styling Section */}
-      <div className="detail-section">
-        <h4 className="detail-section-title">Styling</h4>
-        <div className="move-styling">
-          <h5>Leader</h5>
-          <p>{move.leader_styling || "—"}</p>
-        </div>
-        <div className="move-styling">
-          <h5>Follower</h5>
-          <p>{move.follower_styling || "—"}</p>
-        </div>
-      </div>
-
-      {/* Learning Notes */}
-      <div className="move-notes">
-        <h4>Learning Notes</h4>
-        <p>{move.learning_notes || "—"}</p>
-      </div>
-
+      {/* Media Section */}
       <section className="move-section">
         <h3>Media ({mediaItems.length})</h3>
         <MediaUpload moveId={move.id} onUploaded={handleMediaUploaded} />
@@ -283,6 +265,25 @@ export default function MoveDetailPage() {
           ))}
         </div>
       </section>
+
+      {/* Styling Section */}
+      <div className="detail-section">
+        <h4 className="detail-section-title">Styling</h4>
+        <div className="move-styling">
+          <h5>Leader</h5>
+          <p>{move.leader_styling || "—"}</p>
+        </div>
+        <div className="move-styling">
+          <h5>Follower</h5>
+          <p>{move.follower_styling || "—"}</p>
+        </div>
+      </div>
+
+      {/* Learning Notes */}
+      <div className="move-notes">
+        <h4>Learning Notes</h4>
+        <p>{move.learning_notes || "—"}</p>
+      </div>
 
       <section className="move-section">
         <h3>Connections</h3>
