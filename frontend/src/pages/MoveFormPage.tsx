@@ -189,20 +189,6 @@ export default function MoveFormPage() {
     <div className="move-form-page">
       <h2>{isEditing ? "Edit Move" : "New Move"}</h2>
 
-      {isEditing && moveCollections.length > 0 && (
-        <div className="move-themes-section">
-          <h4>Tags</h4>
-          {moveCollections.map((col) => (
-            <TagEditor
-              key={col.id}
-              collectionId={col.id}
-              collectionName={col.name}
-              moveId={moveId!}
-            />
-          ))}
-        </div>
-      )}
-
       <form onSubmit={handleSubmit} className="move-form">
         {/* Core Identity */}
         <label>
@@ -229,14 +215,6 @@ export default function MoveFormPage() {
           onCuesChange={setCues}
           localMode={!isEditing}
         />
-
-        {/* Media (new moves only; existing moves manage media on the detail page) */}
-        {!isEditing && (
-          <div className="form-section">
-            <div className="form-section-title">Media</div>
-            <MediaStaging files={mediaFiles} onFilesChange={setMediaFiles} />
-          </div>
-        )}
 
         {/* Timing */}
         <div className="form-section">
@@ -346,6 +324,29 @@ export default function MoveFormPage() {
             Core Move
           </label>
         </div>
+
+        {/* Tags (editing only; new moves aren't in a collection yet) */}
+        {isEditing && moveCollections.length > 0 && (
+          <div className="form-section">
+            <div className="form-section-title">Tags</div>
+            {moveCollections.map((col) => (
+              <TagEditor
+                key={col.id}
+                collectionId={col.id}
+                collectionName={col.name}
+                moveId={moveId!}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Media (new moves only; existing moves manage media on the detail page) */}
+        {!isEditing && (
+          <div className="form-section">
+            <div className="form-section-title">Media</div>
+            <MediaStaging files={mediaFiles} onFilesChange={setMediaFiles} />
+          </div>
+        )}
 
         {/* Styling */}
         <div className="form-section">
