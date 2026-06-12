@@ -252,6 +252,8 @@ export default function DrawConnectionsPage() {
           onInit={(instance) => { reactFlowInstance.current = instance; }}
           nodeTypes={nodeTypes}
           nodesDraggable
+          minZoom={0.1}
+          maxZoom={4}
           fitView
         >
           <Background color="#333" gap={20} />
