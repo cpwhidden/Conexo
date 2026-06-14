@@ -222,11 +222,11 @@ function MoveNode({ data, selected }: NodeProps) {
         </button>
       )}
 
-      {/* Add-tagged-move button — bottom-right, only on the selected node.
-          Outline (green +, white fill) when no tag chip is active: prompts to
-          create a tag. Filled green when a tag is active: adds a connected move
-          that inherits the active tag. */}
-      {selected && nodeData.onSelectedAdd && (!focusPosition || focusPosition === "center") && (
+      {/* Add-tagged-move button — bottom-right, on every node (not just the
+          selected/hovered one). Outline (green +, white fill) when no tag chip
+          is active: prompts to create a tag. Filled green when a tag is active:
+          adds a connected move that inherits the active tag. */}
+      {nodeData.onSelectedAdd && (!focusPosition || focusPosition === "center") && (
         <button
           className={`graph-node-tag-add-btn ${nodeData.hasActiveTag ? "filled" : "outline"}`}
           title={

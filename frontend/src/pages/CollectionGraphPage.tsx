@@ -2660,6 +2660,12 @@ export default function CollectionGraphPage() {
     setMediaTags(graphMediaTags || []);
   }, [id]);
 
+  // A tag newly created in a panel must enter the page's tag list so it's
+  // immediately searchable (graph search reads `tags`) without a reload.
+  const handleTagCreated = useCallback((tag: Tag) => {
+    setTags((prev) => (prev.some((t) => t.id === tag.id) ? prev : [...prev, tag]));
+  }, []);
+
   // When a tag is added/removed on a move while that tag is selected for view,
   // the set of L0 tag moves (and thus the tag-focus layout) changes — reload.
   const handleMoveTagsChanged = useCallback(
@@ -3075,6 +3081,7 @@ export default function CollectionGraphPage() {
                 }}
                 onTagClick={handleTagClickFromPanel}
                 onTagsChanged={handleMoveTagsChanged}
+                onTagCreated={handleTagCreated}
                 closing={panelClosing}
               />
             )}
@@ -3101,6 +3108,7 @@ export default function CollectionGraphPage() {
                 onSave={handleMoveSave}
                 onClose={handleEditMovePanelClose}
                 onTagsChanged={handleMoveTagsChanged}
+                onTagCreated={handleTagCreated}
               />
             )}
             {selectedConnection && !selectedMove && !addConnectionMove && !editingMove && (

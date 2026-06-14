@@ -16,6 +16,9 @@ interface EditMovePanelProps {
   /** Fired after a move tag is added/removed, so the graph can reload when the
    *  changed tag is the one currently selected for view. */
   onTagsChanged?: (tagId: string) => void;
+  /** Fired when a brand-new collection tag is created here, so the graph can
+   *  add it to its tag list (e.g. to make it immediately searchable). */
+  onTagCreated?: (tag: Tag) => void;
 }
 
 export default function EditMovePanel({
@@ -25,6 +28,7 @@ export default function EditMovePanel({
   onClose,
   closing,
   onTagsChanged,
+  onTagCreated,
 }: EditMovePanelProps) {
   const [form, setForm] = useState<MoveUpdate>({
     name: move.name,
@@ -122,6 +126,7 @@ export default function EditMovePanel({
       setMoveTags((prev) => [...prev, newTag]);
       setTagInput("");
       setShowTagSuggestions(false);
+      onTagCreated?.(newTag);
       onTagsChanged?.(newTag.id);
     } catch (err) {
       console.error("Failed to create tag:", err);
