@@ -195,6 +195,7 @@ export default function MediaPlayer({
           <p className="media-filename">{media.filename}</p>
           {onRenamed && (
             <button
+              type="button"
               className="btn-icon-small"
               onClick={startEditing}
               title="Rename"
@@ -225,6 +226,7 @@ export default function MediaPlayer({
             <span key={tag.id} className="theme-tag media-tag">
               {tag.name}
               <button
+                type="button"
                 className="theme-tag-remove"
                 onClick={() => handleRemoveTag(tag.id)}
                 title="Remove tag from media"
@@ -267,12 +269,12 @@ export default function MediaPlayer({
           </div>
         )}
         {!isCover && onSetCover && (
-          <button onClick={handleMakeCover} className="btn btn-secondary btn-small">
+          <button type="button" onClick={handleMakeCover} className="btn btn-secondary btn-small">
             Make Cover
           </button>
         )}
         {onDelete && (
-          <button onClick={handleDelete} className="btn btn-danger btn-small">
+          <button type="button" onClick={handleDelete} className="btn btn-danger btn-small">
             Delete
           </button>
         )}

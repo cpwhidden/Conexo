@@ -13,6 +13,9 @@ interface EditMovePanelProps {
   onSave: (updatedMove: Move) => void;
   onClose: () => void;
   closing?: boolean;
+  /** Fired after a move tag is added/removed, so the graph can reload when the
+   *  changed tag is the one currently selected for view. */
+  onTagsChanged?: (tagId: string) => void;
 }
 
 export default function EditMovePanel({
@@ -21,6 +24,7 @@ export default function EditMovePanel({
   onSave,
   onClose,
   closing,
+  onTagsChanged,
 }: EditMovePanelProps) {
   const [form, setForm] = useState<MoveUpdate>({
     name: move.name,
@@ -103,6 +107,7 @@ export default function EditMovePanel({
     setMoveTags((prev) => [...prev, tag]);
     setTagInput("");
     setShowTagSuggestions(false);
+    onTagsChanged?.(tag.id);
   };
 
   const handleCreateTag = async () => {
@@ -117,6 +122,7 @@ export default function EditMovePanel({
       setMoveTags((prev) => [...prev, newTag]);
       setTagInput("");
       setShowTagSuggestions(false);
+      onTagsChanged?.(newTag.id);
     } catch (err) {
       console.error("Failed to create tag:", err);
     }
@@ -168,6 +174,7 @@ export default function EditMovePanel({
   const handleRemoveTag = async (tagId: string) => {
     await client.delete(`/collections/${collectionId}/tags/${tagId}/moves/${move.id}`);
     setMoveTags((prev) => prev.filter((t) => t.id !== tagId));
+    onTagsChanged?.(tagId);
   };
 
   // Reset form when move changes
@@ -343,6 +350,15 @@ export default function EditMovePanel({
               type="text"
               value={form.name || ""}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
+              onKeyDown={(e) => {
+                // Enter in the Name field saves and dismisses the pane. Use
+                // requestSubmit so it runs handleSubmit (and field validation)
+                // regardless of which submit button is first in the form.
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  formRef.current?.requestSubmit();
+                }
+              }}
               required
             />
           </label>
