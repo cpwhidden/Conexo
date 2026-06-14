@@ -389,6 +389,14 @@ export default function AddConnectionPanel({
         }
       }
 
+      // The graph was reloaded right after the move was created — before any
+      // media existed — so the new node has no cover_media_id and shows no
+      // preview. Reload it now that media is uploaded (and the cover is set) so
+      // the preview appears immediately when preview is enabled.
+      if (firstUploadedMediaId) {
+        await onAddMoveToCollection(newMoveId);
+      }
+
       // Auto-select the new move
       setTargetMoveId(newMoveId);
       setShowNewMoveForm(false);

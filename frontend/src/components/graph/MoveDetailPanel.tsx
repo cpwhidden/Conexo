@@ -18,6 +18,9 @@ interface MoveDetailPanelProps {
   /** Fired after a move tag is added/removed, so the graph can reload when the
    *  changed tag is the one currently selected for view. */
   onTagsChanged?: (tagId: string) => void;
+  /** Fired when a brand-new collection tag is created here, so the graph can
+   *  add it to its tag list (e.g. to make it immediately searchable). */
+  onTagCreated?: (tag: Tag) => void;
 }
 
 export default function MoveDetailPanel({
@@ -30,6 +33,7 @@ export default function MoveDetailPanel({
   onTagClick,
   closing,
   onTagsChanged,
+  onTagCreated,
 }: MoveDetailPanelProps) {
   // Collection membership state
   const [moveCollections, setMoveCollections] = useState<Collection[]>([]);
@@ -116,11 +120,12 @@ export default function MoveDetailPanel({
       setMoveTags((prev) => [...prev, newTag]);
       setTagInput("");
       setShowSuggestions(false);
+      onTagCreated?.(newTag);
       onTagsChanged?.(newTag.id);
     } catch (err) {
       console.error("Failed to create tag:", err);
     }
-  }, [tagInput, collectionId, move.id, onTagsChanged]);
+  }, [tagInput, collectionId, move.id, onTagsChanged, onTagCreated]);
 
   // Tag suggestions keyboard navigation
   const tagItemCount =
