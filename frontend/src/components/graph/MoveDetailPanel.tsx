@@ -15,6 +15,9 @@ interface MoveDetailPanelProps {
   onDeleteMove?: () => void;
   onTagClick?: (tag: Tag) => void;
   closing?: boolean;
+  /** Fired after a move tag is added/removed, so the graph can reload when the
+   *  changed tag is the one currently selected for view. */
+  onTagsChanged?: (tagId: string) => void;
 }
 
 export default function MoveDetailPanel({
@@ -26,6 +29,7 @@ export default function MoveDetailPanel({
   onDeleteMove,
   onTagClick,
   closing,
+  onTagsChanged,
 }: MoveDetailPanelProps) {
   // Collection membership state
   const [moveCollections, setMoveCollections] = useState<Collection[]>([]);
@@ -95,8 +99,9 @@ export default function MoveDetailPanel({
       setMoveTags((prev) => [...prev, tag]);
       setTagInput("");
       setShowSuggestions(false);
+      onTagsChanged?.(tag.id);
     },
-    [move.id, collectionId]
+    [move.id, collectionId, onTagsChanged]
   );
 
   const handleCreateTag = useCallback(async () => {
@@ -111,10 +116,11 @@ export default function MoveDetailPanel({
       setMoveTags((prev) => [...prev, newTag]);
       setTagInput("");
       setShowSuggestions(false);
+      onTagsChanged?.(newTag.id);
     } catch (err) {
       console.error("Failed to create tag:", err);
     }
-  }, [tagInput, collectionId, move.id]);
+  }, [tagInput, collectionId, move.id, onTagsChanged]);
 
   // Tag suggestions keyboard navigation
   const tagItemCount =
@@ -162,6 +168,7 @@ export default function MoveDetailPanel({
   const handleRemoveTag = async (tagId: string) => {
     await client.delete(`/collections/${collectionId}/tags/${tagId}/moves/${move.id}`);
     setMoveTags((prev) => prev.filter((t) => t.id !== tagId));
+    onTagsChanged?.(tagId);
   };
 
   return (
