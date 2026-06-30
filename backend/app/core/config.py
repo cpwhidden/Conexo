@@ -10,10 +10,18 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://conexo:conexo@localhost:5432/conexo"
 
+    # Deployment environment ("local", "staging", "production").
+    environment: str = "local"
+
     # JWT
     jwt_secret_key: str = "dev-secret-change-in-production"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
+
+    # Local dev auth: when true, enables POST /auth/dev-login to mint a session
+    # without Google SSO. MUST stay false in production (enforced at startup).
+    dev_auth: bool = False
+    dev_auth_email: str = "dev@conexo.local"
 
     # Google OAuth
     google_client_id: str = ""

@@ -8,6 +8,12 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes import admin, auth, collections, connections, cues, filters, media, moves, sequences, tags
 from app.core.config import settings
 
+# Safety guard: never allow the SSO-bypass dev login in production.
+if settings.dev_auth and settings.environment.lower() == "production":
+    raise RuntimeError(
+        "CONEXO_DEV_AUTH must not be enabled when CONEXO_ENV=production"
+    )
+
 app = FastAPI(title="Conexo", version="0.1.0")
 
 app.add_middleware(

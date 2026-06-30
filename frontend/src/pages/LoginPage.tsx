@@ -4,8 +4,9 @@ import { Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function LoginPage() {
-  const { user, login } = useAuth();
+  const { user, login, devLogin } = useAuth();
   const [error, setError] = useState<string | null>(null);
+  const [devEmail, setDevEmail] = useState("");
   const location = useLocation();
   const [searchParams] = useSearchParams();
 
@@ -38,6 +39,33 @@ export default function LoginPage() {
           }}
         />
       </div>
+
+      {import.meta.env.DEV && (
+        <form
+          className="dev-login"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            try {
+              setError(null);
+              await devLogin(devEmail.trim() || undefined);
+            } catch (err: any) {
+              const detail =
+                err.response?.data?.detail || err.message || "Dev login failed";
+              setError(detail);
+            }
+          }}
+        >
+          <input
+            type="email"
+            placeholder="dev@conexo.local"
+            value={devEmail}
+            onChange={(e) => setDevEmail(e.target.value)}
+          />
+          <button type="submit" className="btn btn-secondary">
+            Dev login (no SSO)
+          </button>
+        </form>
+      )}
     </div>
   );
 }

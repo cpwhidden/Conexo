@@ -13,6 +13,7 @@ interface AuthContextValue {
   user: User | null;
   loading: boolean;
   login: (googleToken: string) => Promise<void>;
+  devLogin: (email?: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -43,13 +44,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.data.user);
   }, []);
 
+  // Local-dev SSO bypass; backend route is disabled unless CONEXO_DEV_AUTH=true.
+  const devLogin = useCallback(async (email?: string) => {
+    const res = await client.post("/auth/dev-login", { email: email ?? null });
+    localStorage.setItem("access_token", res.data.access_token);
+    setUser(res.data.user);
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.removeItem("access_token");
     setUser(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, devLogin, logout }}>
       {children}
     </AuthContext.Provider>
   );

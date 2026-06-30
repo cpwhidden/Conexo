@@ -18,6 +18,34 @@ async def get_user_by_google_id(db: AsyncSession, google_id: str) -> User | None
     return result.scalar_one_or_none()
 
 
+async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
+    result = await db.execute(select(User).where(User.email == email))
+    return result.scalar_one_or_none()
+
+
+async def get_or_create_dev_user(db: AsyncSession, email: str) -> User:
+    """Return an existing user by email, or create a local dev user.
+
+    Used only by the dev-login flow (guarded by settings.dev_auth). Bypasses
+    the Google allowlist so a real account can be logged into with its real
+    data, while still allowing throwaway dev accounts.
+    """
+    user = await get_user_by_email(db, email)
+    if user:
+        return user
+
+    user = User(
+        google_id=f"dev|{email}",
+        email=email,
+        name=email.split("@")[0],
+        picture_url=None,
+        is_admin=True,
+    )
+    db.add(user)
+    await db.flush()
+    return user
+
+
 async def upsert_user_from_google(
     db: AsyncSession,
     google_id: str,

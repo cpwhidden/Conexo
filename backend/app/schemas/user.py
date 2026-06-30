@@ -8,6 +8,12 @@ class GoogleAuthRequest(BaseModel):
     token: str
 
 
+class DevLoginRequest(BaseModel):
+    """Local-dev login. `email` is optional; defaults to settings.dev_auth_email."""
+
+    email: str | None = None
+
+
 class UserResponse(BaseModel):
     id: uuid.UUID
     email: str
