@@ -27,6 +27,9 @@ interface AddConnectionPanelProps {
   onPreviewChange?: (preview: ConnectionPreview | null) => void;
   onClose: () => void;
   closing?: boolean;
+  /** When set (a tag chip is active), new moves created here inherit this tag
+   *  by default — pre-applied to the move and its cover media. */
+  autoTag?: Tag | null;
 }
 
 export default function AddConnectionPanel({
@@ -41,6 +44,7 @@ export default function AddConnectionPanel({
   onPreviewChange,
   onClose,
   closing,
+  autoTag,
 }: AddConnectionPanelProps) {
   // Connection form state
   const [direction, setDirection] = useState<"to" | "from">("to");
@@ -119,6 +123,17 @@ export default function AddConnectionPanel({
       .get(`/collections/${collectionId}/tags`)
       .then((res) => setAvailableTags(res.data));
   }, [collectionId]);
+
+  // When invoked with an active tag, pre-apply it to each new move (the user
+  // can still remove the chip). Re-seeds whenever the new-move form opens so a
+  // series of moves all inherit the tag.
+  useEffect(() => {
+    if (showNewMoveForm && autoTag) {
+      setSelectedTags((prev) =>
+        prev.some((t) => t.id === autoTag.id) ? prev : [autoTag, ...prev]
+      );
+    }
+  }, [showNewMoveForm, autoTag]);
 
   const filteredNewMoveTags = availableTags
     .filter((t) => !selectedTags.some((st) => st.id === t.id))
@@ -332,13 +347,17 @@ export default function AddConnectionPanel({
       // Upload staged media now that the move exists. Keep any that fail so
       // a resubmit retries only those without recreating the move.
       const failed: File[] = [];
+      let firstUploadedMediaId: string | null = null;
       for (const file of newMoveMedia) {
         try {
           const formData = new FormData();
           formData.append("file", file);
-          await client.post(`/moves/${newMoveId}/media`, formData, {
-            headers: { "Content-Type": "multipart/form-data" },
-          });
+          const { data: uploaded } = await client.post(
+            `/moves/${newMoveId}/media`,
+            formData,
+            { headers: { "Content-Type": "multipart/form-data" } }
+          );
+          if (firstUploadedMediaId === null) firstUploadedMediaId = uploaded.id;
         } catch {
           failed.push(file);
         }
@@ -351,6 +370,31 @@ export default function AddConnectionPanel({
             .join(", ")}. Retry, or cancel to keep the move without them.`
         );
         return;
+      }
+
+      // Mark the cover media (first uploaded) with the active tag so the
+      // tag-focus view previews it — unless the user removed the tag chip.
+      // Only one media per tag per move is allowed, so the cover is chosen.
+      if (
+        autoTag &&
+        firstUploadedMediaId &&
+        selectedTags.some((t) => t.id === autoTag.id)
+      ) {
+        try {
+          await client.post(`/media/${firstUploadedMediaId}/tags`, {
+            tag_id: autoTag.id,
+          });
+        } catch {
+          // Non-fatal: the move still carries the tag; preview falls back to cover.
+        }
+      }
+
+      // The graph was reloaded right after the move was created — before any
+      // media existed — so the new node has no cover_media_id and shows no
+      // preview. Reload it now that media is uploaded (and the cover is set) so
+      // the preview appears immediately when preview is enabled.
+      if (firstUploadedMediaId) {
+        await onAddMoveToCollection(newMoveId);
       }
 
       // Auto-select the new move

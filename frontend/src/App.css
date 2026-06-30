@@ -98,11 +98,13 @@
   background: rgba(0, 0, 0, 0.5);
   z-index: 999;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.3s ease;
 }
 
 .mobile-menu-overlay.open {
   opacity: 1;
+  pointer-events: auto;
 }
 
 /* Mobile slide-in navigation */
@@ -779,6 +781,23 @@
   margin: 0 0 1.5rem 0;
   color: #aaa;
   line-height: 1.5;
+}
+
+.modal-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 1.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #2a2a3e;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.95rem;
+}
+
+.modal-input:focus {
+  outline: none;
+  border-color: #22c55e;
 }
 
 .modal-message p {
@@ -2245,6 +2264,7 @@ select optgroup {
   position: absolute;
   top: -8px;
   right: -8px;
+  z-index: 10;
   width: 20px;
   height: 20px;
   border-radius: 50%;
@@ -2263,10 +2283,51 @@ select optgroup {
   background: #c73e54;
 }
 
+/* Add-tagged-move button — bottom-right of the selected node. Green to match
+   tag styling. Outline variant when no tag is active, filled when one is. */
+.graph-node-tag-add-btn {
+  position: absolute;
+  bottom: -8px;
+  right: -8px;
+  z-index: 10;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.graph-node-tag-add-btn.filled {
+  background: #22c55e;
+  border: none;
+  color: #fff;
+}
+
+.graph-node-tag-add-btn.filled:hover {
+  background: #16a34a;
+}
+
+.graph-node-tag-add-btn.outline {
+  background: #fff;
+  border: 2px solid #22c55e;
+  color: #22c55e;
+}
+
+.graph-node-tag-add-btn.outline:hover {
+  background: #f0fdf4;
+}
+
 .graph-node-explore-btn {
   position: absolute;
   top: -8px;
   left: -8px;
+  z-index: 10;
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -2324,6 +2385,7 @@ select optgroup {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
+  z-index: 10;
   width: 22px;
   height: 22px;
   border-radius: 50%;
@@ -3007,18 +3069,21 @@ select optgroup {
 /* Connection-status edge indicators are drawn as overlay bars (pseudo-elements)
    rather than borders, so they stay visible on tagged/focused nodes whose
    border color is themed (e.g. the green tagged outline). */
+/* The bars are inset just inside the node's rounded border and kept at a low
+   z-index so the node's themed rounded rectangle (e.g. the green tagged
+   outline/glow) frames them rather than the straight bar overlapping the
+   rounded corners. They stay above the node fill so the indicator is visible. */
 /* Entry point - no incoming connections (green left bar) */
 .graph-node.entry-point::before {
   content: "";
   position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
+  left: 1px;
+  top: 3px;
+  bottom: 3px;
   width: 4px;
   background: #4CAF50;
-  border-top-left-radius: 8px;
-  border-bottom-left-radius: 8px;
-  z-index: 3;
+  border-radius: 2px;
+  z-index: 1;
   pointer-events: none;
 }
 
@@ -3026,14 +3091,13 @@ select optgroup {
 .graph-node.dead-end::after {
   content: "";
   position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
+  right: 1px;
+  top: 3px;
+  bottom: 3px;
   width: 4px;
   background: #FF9800;
-  border-top-right-radius: 8px;
-  border-bottom-right-radius: 8px;
-  z-index: 3;
+  border-radius: 2px;
+  z-index: 1;
   pointer-events: none;
 }
 
@@ -3042,24 +3106,21 @@ select optgroup {
 .graph-node.isolated::after {
   content: "";
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: 3px;
+  bottom: 3px;
   width: 4px;
   background: #f44336;
-  z-index: 3;
+  border-radius: 2px;
+  z-index: 1;
   pointer-events: none;
 }
 
 .graph-node.isolated::before {
-  left: 0;
-  border-top-left-radius: 8px;
-  border-bottom-left-radius: 8px;
+  left: 1px;
 }
 
 .graph-node.isolated::after {
-  right: 0;
-  border-top-right-radius: 8px;
-  border-bottom-right-radius: 8px;
+  right: 1px;
 }
 
 /* Component color highlighting (top border) - shown when badge is clicked */

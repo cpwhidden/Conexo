@@ -1579,6 +1579,13 @@ export default function CollectionGraphPage() {
   const [deleteConfirmMove, setDeleteConfirmMove] = useState<Move | null>(null);
   const [deleteSequenceWarnings, setDeleteSequenceWarnings] = useState<string[]>([]);
   const [connectionPreview, setConnectionPreview] = useState<ConnectionPreview | null>(null);
+  // When the selected-node green "+" is used with a tag active, the new move
+  // (and its cover media) inherit this tag in the Add Connection panel.
+  const [autoTagForNewMove, setAutoTagForNewMove] = useState<Tag | null>(null);
+  // New-tag prompt (selected-node green "+" with no tag active).
+  const [newTagPromptMove, setNewTagPromptMove] = useState<Move | null>(null);
+  const [newTagName, setNewTagName] = useState("");
+  const [creatingTag, setCreatingTag] = useState(false);
 
   // Sync selected node, layout, level, preview, and active tag to URL (via replaceState, no React re-renders)
   useEffect(() => {
@@ -1601,6 +1608,63 @@ export default function CollectionGraphPage() {
     () => (activeTagId ? tags.find((t) => t.id === activeTagId) ?? null : null),
     [tags, activeTagId]
   );
+
+  // Keep a ref to the active tag so the selected-node add handler (captured in
+  // node data) sees the latest value without rebuilding every node.
+  const activeTagRef = useRef<Tag | null>(null);
+  useEffect(() => {
+    activeTagRef.current = activeTag;
+  }, [activeTag]);
+
+  // Bottom-right green "+" on the selected node. With a tag active, add a
+  // connected move that inherits the tag (and its cover media). With no tag
+  // active, prompt to create one, apply it to this move, and select it for view.
+  const handleSelectedNodeAdd = useCallback((move: Move) => {
+    if (activeTagRef.current) {
+      setAutoTagForNewMove(activeTagRef.current);
+      setAddConnectionMove(move);
+      setEditingMove(null);
+    } else {
+      setNewTagPromptMove(move);
+      setNewTagName("");
+    }
+  }, []);
+
+  // Create a tag, assign it to the prompted move, and select it for view.
+  const handleCreateTagForMove = useCallback(async () => {
+    const name = newTagName.trim();
+    const targetMove = newTagPromptMove;
+    if (!name || !targetMove || !id) return;
+    setCreatingTag(true);
+    try {
+      const createRes = await client.post(`/collections/${id}/tags`, { name });
+      const tag: Tag = createRes.data;
+      await client.post(`/collections/${id}/tags/${tag.id}/moves`, {
+        move_id: targetMove.id,
+      });
+      // Reflect locally so the tag view immediately includes this move.
+      // taggedMoveIds is derived from `moves` (MoveGraphData, which carries
+      // tag_names); allMoves is plain Move[] and isn't used for tag membership.
+      setTags((prev) => (prev.some((t) => t.id === tag.id) ? prev : [...prev, tag]));
+      setMoves((prev) =>
+        prev.map((m) =>
+          m.id === targetMove.id
+            ? { ...m, tag_names: [...(m.tag_names ?? []), tag.name] }
+            : m
+        )
+      );
+      // Select the new tag for view, anchored on this move.
+      setActiveTagId(tag.id);
+      setFocusedMoveId(targetMove.id);
+      setSelectedMove(null);
+      setNewTagPromptMove(null);
+      setNewTagName("");
+    } catch (err) {
+      console.error("Failed to create tag:", err);
+    } finally {
+      setCreatingTag(false);
+    }
+  }, [newTagName, newTagPromptMove, id]);
 
   // Derived: set of move IDs that carry the active tag
   const taggedMoveIds = useMemo(() => {
@@ -1663,6 +1727,7 @@ export default function CollectionGraphPage() {
       setSelectedMove(null);
       setAddConnectionMove(null);
       setEditingMove(null);
+      setAutoTagForNewMove(null);
       setPanelClosing(false);
     }, 200); // Match animation duration
   }, []);
@@ -1955,6 +2020,7 @@ export default function CollectionGraphPage() {
           hasStoredPosition: cm.position_x !== null && cm.position_y !== null,
           showPreview,
           onAddConnection: (moveData: Move) => {
+            setAutoTagForNewMove(null);
             setAddConnectionMove(moveData);
             setEditingMove(null);
           },
@@ -2081,6 +2147,9 @@ export default function CollectionGraphPage() {
             tagged: taggedMoveIds.has(lookupId),
             // When a tag is active, prefer the media marked with it (else cover).
             previewMediaId: tagPreviewMediaByMove.get(lookupId),
+            // Bottom-right green "+" on the selected node.
+            hasActiveTag: !!activeTagId,
+            onSelectedAdd: handleSelectedNodeAdd,
           },
         };
       });
@@ -2579,6 +2648,35 @@ export default function CollectionGraphPage() {
     [id]
   );
 
+  // Refresh the graph display data (collection, moves, connections, tags).
+  const reloadGraphData = useCallback(async () => {
+    if (!id) return;
+    const res = await client.get(`/collections/${id}/graph-data`);
+    const { collection: col, moves: graphMoves, connections: graphConnections, tags: graphTags, media_tags: graphMediaTags } = res.data;
+    setCollection(col);
+    setMoves(graphMoves);
+    setConnections(graphConnections);
+    setTags(graphTags || []);
+    setMediaTags(graphMediaTags || []);
+  }, [id]);
+
+  // A tag newly created in a panel must enter the page's tag list so it's
+  // immediately searchable (graph search reads `tags`) without a reload.
+  const handleTagCreated = useCallback((tag: Tag) => {
+    setTags((prev) => (prev.some((t) => t.id === tag.id) ? prev : [...prev, tag]));
+  }, []);
+
+  // When a tag is added/removed on a move while that tag is selected for view,
+  // the set of L0 tag moves (and thus the tag-focus layout) changes — reload.
+  const handleMoveTagsChanged = useCallback(
+    (tagId: string) => {
+      if (activeTagRef.current?.id === tagId) {
+        reloadGraphData();
+      }
+    },
+    [reloadGraphData]
+  );
+
   // Handle deleting a move (and all its connections)
   const handleDeleteMoveConfirm = useCallback(
     async (moveId: string) => {
@@ -2944,6 +3042,8 @@ export default function CollectionGraphPage() {
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           nodesDraggable={layout === "custom"}
+          minZoom={0.1}
+          maxZoom={4}
           fitView
         >
           <Background color="#333" gap={20} />
@@ -2966,6 +3066,7 @@ export default function CollectionGraphPage() {
                 collectionId={id!}
                 onClose={handlePanelClose}
                 onAddConnection={() => {
+                  setAutoTagForNewMove(null);
                   setAddConnectionMove(selectedMove);
                   setSelectedMove(null);
                 }}
@@ -2979,6 +3080,8 @@ export default function CollectionGraphPage() {
                   }
                 }}
                 onTagClick={handleTagClickFromPanel}
+                onTagsChanged={handleMoveTagsChanged}
+                onTagCreated={handleTagCreated}
                 closing={panelClosing}
               />
             )}
@@ -2995,6 +3098,7 @@ export default function CollectionGraphPage() {
                 onPreviewChange={setConnectionPreview}
                 onClose={handlePanelClose}
                 closing={panelClosing}
+                autoTag={autoTagForNewMove}
               />
             )}
             {editingMove && (
@@ -3003,6 +3107,8 @@ export default function CollectionGraphPage() {
                 collectionId={id!}
                 onSave={handleMoveSave}
                 onClose={handleEditMovePanelClose}
+                onTagsChanged={handleMoveTagsChanged}
+                onTagCreated={handleTagCreated}
               />
             )}
             {selectedConnection && !selectedMove && !addConnectionMove && !editingMove && (
@@ -3060,6 +3166,60 @@ export default function CollectionGraphPage() {
             }}
             onClose={() => setFilterPanelOpen(false)}
           />
+        )}
+
+        {/* New Tag Prompt — selected-node green "+" with no tag active */}
+        {newTagPromptMove && (
+          <div
+            className="modal-overlay"
+            onClick={() => {
+              setNewTagPromptMove(null);
+              setNewTagName("");
+            }}
+          >
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h3 className="modal-title">New Tag</h3>
+              <p className="modal-message">
+                Create a tag and apply it to "{newTagPromptMove.name}". The graph
+                will switch to viewing this tag.
+              </p>
+              <input
+                className="modal-input"
+                type="text"
+                autoFocus
+                placeholder="Tag name..."
+                value={newTagName}
+                onChange={(e) => setNewTagName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newTagName.trim()) {
+                    e.preventDefault();
+                    handleCreateTagForMove();
+                  } else if (e.key === "Escape") {
+                    setNewTagPromptMove(null);
+                    setNewTagName("");
+                  }
+                }}
+              />
+              <div className="modal-actions">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setNewTagPromptMove(null);
+                    setNewTagName("");
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleCreateTagForMove}
+                  disabled={creatingTag || !newTagName.trim()}
+                >
+                  {creatingTag ? "Creating..." : "Create Tag"}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Delete Move Confirmation Modal */}

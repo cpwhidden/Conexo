@@ -16,6 +16,10 @@ interface MoveNodeData {
   hasStoredPosition: boolean;
   onAddConnection?: (move: MoveNodeData["move"]) => void;
   onExplore?: (move: MoveNodeData["move"]) => void;
+  // Bottom-right green "+" shown on the selected node. Behavior/appearance
+  // depends on hasActiveTag (set when a tag chip is selected for view).
+  onSelectedAdd?: (move: MoveNodeData["move"]) => void;
+  hasActiveTag?: boolean;
   focusPosition?: "left" | "center" | "right" | null;
   isColumnFirst?: boolean;
   onInfoClick?: (move: MoveNodeData["move"]) => void;
@@ -212,6 +216,27 @@ function MoveNode({ data, selected }: NodeProps) {
           onClick={(e) => {
             e.stopPropagation();
             nodeData.onAddConnection?.(move);
+          }}
+        >
+          +
+        </button>
+      )}
+
+      {/* Add-tagged-move button — bottom-right, on every node (not just the
+          selected/hovered one). Outline (green +, white fill) when no tag chip
+          is active: prompts to create a tag. Filled green when a tag is active:
+          adds a connected move that inherits the active tag. */}
+      {nodeData.onSelectedAdd && (!focusPosition || focusPosition === "center") && (
+        <button
+          className={`graph-node-tag-add-btn ${nodeData.hasActiveTag ? "filled" : "outline"}`}
+          title={
+            nodeData.hasActiveTag
+              ? "Add a connected move with this tag"
+              : "Create a tag for this move"
+          }
+          onClick={(e) => {
+            e.stopPropagation();
+            nodeData.onSelectedAdd?.(move);
           }}
         >
           +

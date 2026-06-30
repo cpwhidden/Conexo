@@ -116,15 +116,38 @@ export default function MoveFormPage() {
         }
         // Upload any staged media now that the move exists.
         const failed: string[] = [];
+        let firstUploadedId: string | null = null;
+        let firstVideoId: string | null = null;
         for (const file of mediaFiles) {
           try {
             const formData = new FormData();
             formData.append("file", file);
-            await client.post(`/moves/${newMoveId}/media`, formData, {
-              headers: { "Content-Type": "multipart/form-data" },
-            });
+            const { data: uploaded } = await client.post(
+              `/moves/${newMoveId}/media`,
+              formData,
+              { headers: { "Content-Type": "multipart/form-data" } }
+            );
+            if (firstUploadedId === null) firstUploadedId = uploaded.id;
+            if (
+              firstVideoId === null &&
+              uploaded.content_type?.startsWith("video/")
+            ) {
+              firstVideoId = uploaded.id;
+            }
           } catch {
             failed.push(file.name);
+          }
+        }
+        // The backend auto-assigns the first uploaded media as cover regardless
+        // of type. Prefer the first video as the cover when one exists but an
+        // image was uploaded ahead of it.
+        if (firstVideoId && firstVideoId !== firstUploadedId) {
+          try {
+            await client.patch(
+              `/moves/${newMoveId}/cover-media/${firstVideoId}`
+            );
+          } catch {
+            // Non-fatal: fall back to the backend's default cover.
           }
         }
         if (failed.length > 0) {
