@@ -10,13 +10,22 @@ from app.core.security import decode_access_token
 from app.models.user import User
 from app.services.user import get_user_by_id
 
-bearer_scheme = HTTPBearer()
+# auto_error=False: FastAPI's built-in error for a missing or non-Bearer
+# Authorization header is a 403, which the frontend treats as "forbidden" rather
+# than "logged out". We raise 401 ourselves so clients can clear the session.
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     user_id_str = decode_access_token(credentials.credentials)
     if user_id_str is None:
         raise HTTPException(
