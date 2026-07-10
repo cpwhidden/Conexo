@@ -2184,6 +2184,14 @@ select optgroup {
   text-align: center;
   max-width: 360px;
   line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.graph-empty-state p {
+  margin: 0;
 }
 
 /* Graph nodes */

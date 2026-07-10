@@ -1573,6 +1573,8 @@ export default function CollectionGraphPage() {
   // Panel state
   const [selectedMove, setSelectedMove] = useState<Move | null>(null);
   const [addConnectionMove, setAddConnectionMove] = useState<Move | null>(null);
+  // Empty-collection call to action: opens the New Move pane with no source move.
+  const [addingFirstMove, setAddingFirstMove] = useState(false);
   const [editingMove, setEditingMove] = useState<Move | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [panelClosing, setPanelClosing] = useState(false);
@@ -1726,6 +1728,7 @@ export default function CollectionGraphPage() {
     setTimeout(() => {
       setSelectedMove(null);
       setAddConnectionMove(null);
+      setAddingFirstMove(false);
       setEditingMove(null);
       setAutoTagForNewMove(null);
       setPanelClosing(false);
@@ -2773,7 +2776,8 @@ export default function CollectionGraphPage() {
     return <div className="empty-state">Collection not found</div>;
   }
 
-  const showPanel = selectedMove || addConnectionMove || editingMove || selectedConnection || panelClosing;
+  const showPanel =
+    selectedMove || addConnectionMove || addingFirstMove || editingMove || selectedConnection || panelClosing;
 
   const toolbar = (
     <>
@@ -3009,7 +3013,13 @@ export default function CollectionGraphPage() {
         {/* Empty state warnings */}
         {moves.length === 0 && (
           <div className="graph-empty-state">
-            Add moves to this collection to use the graph view.
+            <p>Add moves to this collection to use the graph view.</p>
+            <button
+              className="btn btn-primary"
+              onClick={() => setAddingFirstMove(true)}
+            >
+              + New Move
+            </button>
           </div>
         )}
         {layout === "core" && moves.length > 0 && !moves.some((m) => m.is_core) && (
@@ -3085,7 +3095,7 @@ export default function CollectionGraphPage() {
                 closing={panelClosing}
               />
             )}
-            {addConnectionMove && (
+            {(addConnectionMove || addingFirstMove) && (
               <AddConnectionPanel
                 sourceMove={addConnectionMove}
                 allMoves={allMoves}
