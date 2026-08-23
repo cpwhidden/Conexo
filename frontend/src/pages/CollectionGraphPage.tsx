@@ -1707,6 +1707,8 @@ export default function CollectionGraphPage() {
 
   // Graph analysis state - toggle for showing component colors
   const [showComponentColors, setShowComponentColors] = useState(false);
+  // Cursor for cycling the viewport through disconnected groups on click.
+  const [nextGroupIndex, setNextGroupIndex] = useState(0);
 
   // Graph search state
   const [graphSearch, setGraphSearch] = useState("");
@@ -2067,6 +2069,66 @@ export default function CollectionGraphPage() {
   const graphAnalysis = useMemo(() => {
     return analyzeGraph(initialNodes, initialEdges);
   }, [initialNodes, initialEdges]);
+
+  // One representative move id per disconnected group (indexed by component
+  // index). Prefer an entry point (in-degree 0) so we land on a group "start",
+  // otherwise the lowest-id node for stability.
+  const componentRepresentatives = useMemo(() => {
+    const byIndex = new Map<number, string[]>();
+    graphAnalysis.nodeComponentIndex.forEach((idx, nodeId) => {
+      if (!byIndex.has(idx)) byIndex.set(idx, []);
+      byIndex.get(idx)!.push(nodeId);
+    });
+    const entrySet = new Set(graphAnalysis.entryPoints);
+    const reps: string[] = [];
+    for (let i = 0; i < graphAnalysis.componentCount; i++) {
+      const ids = (byIndex.get(i) || []).slice().sort();
+      if (ids.length === 0) continue;
+      reps[i] = ids.find((id) => entrySet.has(id)) ?? ids[0];
+    }
+    return reps;
+  }, [graphAnalysis]);
+
+  // Pan/zoom the viewport to a node in the next disconnected group. Each click
+  // advances to the following group, wrapping around. Turns on component colors
+  // so the group you land on is visually distinct.
+  const focusNextDisconnectedGroup = useCallback(() => {
+    const count = graphAnalysis.componentCount;
+    if (count === 0) return;
+    const targetIndex = nextGroupIndex % count;
+    const repMoveId = componentRepresentatives[targetIndex];
+    setNextGroupIndex((prev) => (prev + 1) % count);
+    if (!repMoveId) return;
+
+    setShowComponentColors(true);
+
+    if (layout === "focus") {
+      setFocusedMoveId(repMoveId);
+      return;
+    }
+
+    // Map the move id to the currently rendered node (ids may be virtual in
+    // some layouts) and center on it.
+    const node = nodes.find(
+      (n) => n.id === repMoveId || virtualToRealIdMap.get(n.id) === repMoveId
+    );
+    const targetNodeId = node?.id ?? repMoveId;
+    requestAnimationFrame(() => {
+      reactFlowInstance.current?.fitView({
+        nodes: [{ id: targetNodeId }],
+        duration: 300,
+        maxZoom: 1.2,
+        padding: 0.5,
+      });
+    });
+  }, [
+    graphAnalysis.componentCount,
+    componentRepresentatives,
+    nextGroupIndex,
+    layout,
+    nodes,
+    virtualToRealIdMap,
+  ]);
 
   // Helper to apply final styling to nodes and edges
   const applyFinalStyling = useCallback(
@@ -2969,8 +3031,8 @@ export default function CollectionGraphPage() {
         {graphAnalysis.componentCount > 1 && !isFilterActive && (
           <button
             className={`disconnected-warning ${showComponentColors ? "active" : ""}`}
-            onClick={() => setShowComponentColors(!showComponentColors)}
-            title="Click to highlight disconnected groups"
+            onClick={focusNextDisconnectedGroup}
+            title="Click to jump to the next disconnected group"
           >
             ⚠️ {graphAnalysis.componentCount} disconnected groups
           </button>
