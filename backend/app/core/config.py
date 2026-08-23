@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 # Resolve the .env file relative to the project root (one level above backend/)
@@ -11,7 +12,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://conexo:conexo@localhost:5432/conexo"
 
     # Deployment environment ("local", "staging", "production").
-    environment: str = "local"
+    # Aliased to CONEXO_ENV (not the prefix-derived CONEXO_ENVIRONMENT).
+    environment: str = Field(default="local", validation_alias="CONEXO_ENV")
 
     # JWT
     jwt_secret_key: str = "dev-secret-change-in-production"

@@ -8,10 +8,15 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes import admin, auth, collections, connections, cues, filters, media, moves, sequences, tags
 from app.core.config import settings
 
-# Safety guard: never allow the SSO-bypass dev login in production.
-if settings.dev_auth and settings.environment.lower() == "production":
+# Safety guard (default-deny): the SSO-bypass dev login may ONLY run in an
+# explicitly local/development environment. Any other value of CONEXO_ENV
+# (including an unset/typo'd one) refuses to boot when dev auth is enabled,
+# so a misconfigured production can never silently expose /auth/dev-login.
+_DEV_AUTH_ENVIRONMENTS = {"local", "development", "dev", "test"}
+if settings.dev_auth and settings.environment.lower() not in _DEV_AUTH_ENVIRONMENTS:
     raise RuntimeError(
-        "CONEXO_DEV_AUTH must not be enabled when CONEXO_ENV=production"
+        "CONEXO_DEV_AUTH may only be enabled when CONEXO_ENV is one of "
+        f"{sorted(_DEV_AUTH_ENVIRONMENTS)} (got '{settings.environment}')"
     )
 
 app = FastAPI(title="Conexo", version="0.1.0")

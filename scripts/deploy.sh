@@ -65,7 +65,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --allow-unauthenticated \
   --clear-cloudsql-instances \
   --set-secrets "CONEXO_DATABASE_URL=CONEXO_DATABASE_URL:latest,CONEXO_JWT_SECRET_KEY=CONEXO_JWT_SECRET_KEY:latest,CONEXO_GOOGLE_CLIENT_ID=CONEXO_GOOGLE_CLIENT_ID:latest,CONEXO_GCS_BUCKET_NAME=CONEXO_GCS_BUCKET_NAME:latest,CONEXO_CORS_ORIGINS=CONEXO_CORS_ORIGINS:latest" \
-  --set-env-vars "CONEXO_USE_LOCAL_STORAGE=false" \
+  --set-env-vars "CONEXO_USE_LOCAL_STORAGE=false,CONEXO_ENV=production" \
   --min-instances 0 \
   --max-instances 2 \
   --memory 512Mi \
