@@ -19,6 +19,7 @@ import dagre from "@dagrejs/dagre";
 import "@xyflow/react/dist/style.css";
 
 import client from "../api/client";
+import { useUndo } from "../components/UndoToast";
 import type { CollectionWithMoves, Connection, MediaTagLink, Move, MoveGraphData, Tag } from "../types";
 import MoveNode from "../components/graph/MoveNode";
 import MoveDetailPanel from "../components/graph/MoveDetailPanel";
@@ -1579,6 +1580,7 @@ export default function CollectionGraphPage() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [panelClosing, setPanelClosing] = useState(false);
   const [deleteConfirmMove, setDeleteConfirmMove] = useState<Move | null>(null);
+  const { showUndo } = useUndo();
   const [deleteSequenceWarnings, setDeleteSequenceWarnings] = useState<string[]>([]);
   const [connectionPreview, setConnectionPreview] = useState<ConnectionPreview | null>(null);
   // When the selected-node green "+" is used with a tag active, the new move
@@ -2745,6 +2747,7 @@ export default function CollectionGraphPage() {
   // Handle deleting a move (and all its connections)
   const handleDeleteMoveConfirm = useCallback(
     async (moveId: string) => {
+      const deletedName = deleteConfirmMove?.name ?? "move";
       await client.delete(`/moves/${moveId}`);
       // Remove from local state immediately for responsiveness
       setMoves((prev) => prev.filter((m) => m.id !== moveId));
@@ -2760,8 +2763,17 @@ export default function CollectionGraphPage() {
       // Close panel and modal
       setSelectedMove(null);
       setDeleteConfirmMove(null);
+      // The delete is a soft delete, so offer to put it back. Restoring brings
+      // the move's connections back with it, hence the full graph reload.
+      showUndo({
+        message: `Deleted "${deletedName}"`,
+        onUndo: async () => {
+          await client.post(`/moves/${moveId}/restore`);
+          await reloadGraphData();
+        },
+      });
     },
-    [id]
+    [id, deleteConfirmMove, showUndo, reloadGraphData]
   );
 
   // Get the selected connection from selectedEdgeId
@@ -3300,12 +3312,12 @@ export default function CollectionGraphPage() {
             title="Delete Move"
             message={
               <>
-                <p>Delete "{deleteConfirmMove.name}" and all its connections? This cannot be undone.</p>
+                <p>Delete "{deleteConfirmMove.name}" and hide its connections? You can undo this right after — deleted moves are kept, not erased.</p>
                 {deleteSequenceWarnings.length > 0 && (
                   <div className="modal-warning">
                     <strong>This move is used in {deleteSequenceWarnings.length} sequence{deleteSequenceWarnings.length > 1 ? "s" : ""}:</strong>
                     <ul>{deleteSequenceWarnings.map((name, i) => <li key={i}>{name}</li>)}</ul>
-                    <p>Deleting will remove it from these sequences.</p>
+                    <p>It will drop out of these sequences, and reappear in them if you restore it.</p>
                   </div>
                 )}
               </>

@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -28,7 +29,9 @@ async def list_moves(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    query = select(Move).where(Move.user_id == current_user.id)
+    query = select(Move).where(
+        Move.user_id == current_user.id, Move.deleted_at.is_(None)
+    )
     if collection_id is not None:
         query = query.join(CollectionMove, CollectionMove.move_id == Move.id).where(
             CollectionMove.collection_id == collection_id
@@ -73,6 +76,24 @@ async def create_move(
         await db.flush()
 
     return MoveResponse.model_validate(move)
+
+
+@router.get("/deleted", response_model=list[MoveResponse])
+async def list_deleted_moves(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List soft-deleted moves, most recently deleted first.
+
+    Declared before GET /{move_id} so that "deleted" is matched as a literal
+    path rather than being parsed as a move UUID.
+    """
+    result = await db.execute(
+        select(Move)
+        .where(Move.user_id == current_user.id, Move.deleted_at.is_not(None))
+        .order_by(Move.deleted_at.desc())
+    )
+    return [MoveResponse.model_validate(m) for m in result.scalars().all()]
 
 
 @router.get("/{move_id}", response_model=MoveResponse)
@@ -123,16 +144,40 @@ async def delete_move(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Soft delete a move.
+
+    The row is kept and stamped with deleted_at so the delete can be undone via
+    POST /moves/{move_id}/restore. Videos, cues and connections are left intact;
+    because the row is never removed, the delete-orphan cascades do not fire.
+    """
     move = await _get_user_move(db, move_id, current_user.id)
-    await db.delete(move)
+    move.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+@router.post("/{move_id}/restore", response_model=MoveResponse)
+async def restore_move(
+    move_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Undo a soft delete, bringing the move and its relationships back."""
+    move = await _get_user_move(db, move_id, current_user.id, include_deleted=True)
+    if move.deleted_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Move is not deleted"
+        )
+    move.deleted_at = None
+    await db.flush()
+    return MoveResponse.model_validate(move)
 
 
 async def _get_user_move(
-    db: AsyncSession, move_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, move_id: uuid.UUID, user_id: uuid.UUID, include_deleted: bool = False
 ) -> Move:
-    result = await db.execute(
-        select(Move).where(Move.id == move_id, Move.user_id == user_id)
-    )
+    query = select(Move).where(Move.id == move_id, Move.user_id == user_id)
+    if not include_deleted:
+        query = query.where(Move.deleted_at.is_(None))
+    result = await db.execute(query)
     move = result.scalar_one_or_none()
     if move is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Move not found")

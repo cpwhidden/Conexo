@@ -34,14 +34,36 @@ from app.schemas.tag import TagResponse
 router = APIRouter(prefix="/collections", tags=["collections"])
 
 
-def _build_collection_response(c: Collection) -> CollectionResponse:
+async def _live_move_counts(
+    db: AsyncSession, collection_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    """Count non-trashed moves per collection.
+
+    Done as one grouped query rather than walking cm.move, which would lazy-load
+    each Move (and its eagerly-loaded videos/cues/connections) per row.
+    """
+    if not collection_ids:
+        return {}
+    result = await db.execute(
+        select(CollectionMove.collection_id, func.count())
+        .join(Move, Move.id == CollectionMove.move_id)
+        .where(
+            CollectionMove.collection_id.in_(collection_ids),
+            Move.deleted_at.is_(None),
+        )
+        .group_by(CollectionMove.collection_id)
+    )
+    return {row[0]: row[1] for row in result.all()}
+
+
+def _build_collection_response(c: Collection, move_count: int) -> CollectionResponse:
     return CollectionResponse(
         id=c.id,
         name=c.name,
         description=c.description,
         dance_style=c.dance_style,
         date_last_opened=c.date_last_opened,
-        move_count=len(c.collection_moves),
+        move_count=move_count,
         created_at=c.created_at,
         updated_at=c.updated_at,
     )
@@ -58,7 +80,9 @@ async def list_collections(
         query = query.where(Collection.dance_style == dance_style)
     query = query.order_by(nulls_last(Collection.date_last_opened.desc()))
     result = await db.execute(query)
-    return [_build_collection_response(c) for c in result.scalars().all()]
+    collections = list(result.scalars().all())
+    counts = await _live_move_counts(db, [c.id for c in collections])
+    return [_build_collection_response(c, counts.get(c.id, 0)) for c in collections]
 
 
 @router.get("/by-move/{move_id}", response_model=list[CollectionResponse])
@@ -77,7 +101,9 @@ async def get_collections_for_move(
         )
         .order_by(Collection.name)
     )
-    return [_build_collection_response(c) for c in result.scalars().all()]
+    collections = list(result.scalars().all())
+    counts = await _live_move_counts(db, [c.id for c in collections])
+    return [_build_collection_response(c, counts.get(c.id, 0)) for c in collections]
 
 
 @router.post("", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
@@ -122,6 +148,7 @@ async def get_collection(
             added_at=cm.added_at,
         )
         for cm in collection.collection_moves
+        if cm.move is not None and cm.move.deleted_at is None
     ]
 
     return CollectionWithMovesResponse(
@@ -176,6 +203,7 @@ async def get_collection_graph_data(
             added_at=cm.added_at,
         )
         for cm in collection.collection_moves
+        if cm.move is not None and cm.move.deleted_at is None
     ]
     collection_response = CollectionWithMovesResponse(
         id=collection.id,
@@ -190,7 +218,11 @@ async def get_collection_graph_data(
     )
 
     # Move objects are already loaded via the selectinload chain above
-    move_objects = [cm.move for cm in collection.collection_moves if cm.move is not None]
+    move_objects = [
+        cm.move
+        for cm in collection.collection_moves
+        if cm.move is not None and cm.move.deleted_at is None
+    ]
     move_ids = [m.id for m in move_objects]
 
     if move_ids:
@@ -201,7 +233,11 @@ async def get_collection_graph_data(
         enrichment_sql = text("""
             SELECT 'conn' AS type, id::text, source_move_id::text AS key1, target_move_id::text AS key2,
                    label, notes, flow::text, created_at::text, collection_id::text
-            FROM move_connections WHERE collection_id = :cid
+            -- :mids excludes trashed moves, so this also drops connections
+            -- whose source or target is in the trash.
+            FROM move_connections
+            WHERE collection_id = :cid
+              AND source_move_id = ANY(:mids) AND target_move_id = ANY(:mids)
             UNION ALL
             SELECT 'media' AS type, NULL, move_id::text, count(*)::text, NULL, NULL, NULL, NULL, NULL
             FROM move_videos WHERE move_id = ANY(:mids) GROUP BY move_id
@@ -314,7 +350,8 @@ async def update_collection(
     for field, value in update_data.items():
         setattr(collection, field, value)
     await db.flush()
-    return _build_collection_response(collection)
+    counts = await _live_move_counts(db, [collection.id])
+    return _build_collection_response(collection, counts.get(collection.id, 0))
 
 
 @router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -460,7 +497,9 @@ async def _get_user_move(
     db: AsyncSession, move_id: uuid.UUID, user_id: uuid.UUID
 ) -> Move:
     result = await db.execute(
-        select(Move).where(Move.id == move_id, Move.user_id == user_id)
+        select(Move).where(
+            Move.id == move_id, Move.user_id == user_id, Move.deleted_at.is_(None)
+        )
     )
     move = result.scalar_one_or_none()
     if move is None:

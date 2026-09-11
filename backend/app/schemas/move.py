@@ -89,6 +89,8 @@ class MoveResponse(BaseModel):
     cover_media_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
+    # Set only for moves in the trash; None for live moves.
+    deleted_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

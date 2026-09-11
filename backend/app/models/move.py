@@ -70,6 +70,13 @@ class Move(Base):
             name="ck_moves_learning_priority_range",
         ),
         Index("ix_moves_user_id", "user_id"),
+        # Partial index: soft-deleted rows are excluded from nearly every read,
+        # so only index the rows that are actually deleted.
+        Index(
+            "ix_moves_deleted_at",
+            "deleted_at",
+            postgresql_where=text("deleted_at IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -121,6 +128,10 @@ class Move(Base):
     leader_styling: Mapped[str | None] = mapped_column(String(300), nullable=True)
     follower_styling: Mapped[str | None] = mapped_column(String(300), nullable=True)
     learning_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Soft delete: set instead of removing the row, so a delete can be undone.
+    # NULL means the move is live; a timestamp means it is in the trash.
+    deleted_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
