@@ -12,7 +12,6 @@ interface CollectionTabBarProps {
 const TABS: { key: CollectionTab; label: string; subpath: string }[] = [
   { key: "list", label: "List", subpath: "moves" },
   { key: "flow", label: "Flow", subpath: "flow" },
-  { key: "graph", label: "Graph", subpath: "graph" },
   { key: "learn", label: "Learn", subpath: "learn" },
   { key: "tags", label: "Tag", subpath: "tags" },
 ];

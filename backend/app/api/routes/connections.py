@@ -3,11 +3,13 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.collection import Collection
 from app.models.connection import MoveConnection
+from app.models.move import Move
 from app.models.sequence import Sequence, SequenceMove
 from app.models.user import User
 from app.schemas.connection import ConnectionCreate, ConnectionResponse, ConnectionUpdate
@@ -23,8 +25,19 @@ async def list_connections(
 ):
     # Verify collection ownership
     await _verify_collection_owner(db, collection_id, current_user.id)
+    # Connections attached to a trashed move stay in the table so a restore can
+    # bring them back, but they must not surface in the graph.
+    source_move = aliased(Move)
+    target_move = aliased(Move)
     result = await db.execute(
-        select(MoveConnection).where(MoveConnection.collection_id == collection_id)
+        select(MoveConnection)
+        .join(source_move, source_move.id == MoveConnection.source_move_id)
+        .join(target_move, target_move.id == MoveConnection.target_move_id)
+        .where(
+            MoveConnection.collection_id == collection_id,
+            source_move.deleted_at.is_(None),
+            target_move.deleted_at.is_(None),
+        )
     )
     return [ConnectionResponse.model_validate(c) for c in result.scalars().all()]
 

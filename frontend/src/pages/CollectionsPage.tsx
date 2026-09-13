@@ -15,6 +15,7 @@ export default function CollectionsPage() {
     dance_style: "Salsa",
   });
   const [saving, setSaving] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [filterStyle, setFilterStyle] = useState<string>("");
 
   useEffect(() => {
@@ -37,6 +38,7 @@ export default function CollectionsPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setCreateError(null);
     try {
       await client.post("/collections", {
         ...form,
@@ -45,6 +47,10 @@ export default function CollectionsPage() {
       setForm({ name: "", description: "", dance_style: "Salsa" });
       setShowForm(false);
       loadCollections();
+    } catch (err: any) {
+      setCreateError(
+        err.response?.data?.detail ?? "Could not create collection. Please try again."
+      );
     } finally {
       setSaving(false);
     }
@@ -105,6 +111,7 @@ export default function CollectionsPage() {
           <button type="submit" className="btn btn-primary" disabled={saving}>
             {saving ? "Creating..." : "Create"}
           </button>
+          {createError && <div className="error-message">{createError}</div>}
         </form>
       )}
 

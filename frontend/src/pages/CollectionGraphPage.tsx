@@ -19,6 +19,7 @@ import dagre from "@dagrejs/dagre";
 import "@xyflow/react/dist/style.css";
 
 import client from "../api/client";
+import { useUndo } from "../components/UndoToast";
 import type { CollectionWithMoves, Connection, MediaTagLink, Move, MoveGraphData, Tag } from "../types";
 import MoveNode from "../components/graph/MoveNode";
 import MoveDetailPanel from "../components/graph/MoveDetailPanel";
@@ -1573,10 +1574,13 @@ export default function CollectionGraphPage() {
   // Panel state
   const [selectedMove, setSelectedMove] = useState<Move | null>(null);
   const [addConnectionMove, setAddConnectionMove] = useState<Move | null>(null);
+  // Empty-collection call to action: opens the New Move pane with no source move.
+  const [addingFirstMove, setAddingFirstMove] = useState(false);
   const [editingMove, setEditingMove] = useState<Move | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [panelClosing, setPanelClosing] = useState(false);
   const [deleteConfirmMove, setDeleteConfirmMove] = useState<Move | null>(null);
+  const { showUndo } = useUndo();
   const [deleteSequenceWarnings, setDeleteSequenceWarnings] = useState<string[]>([]);
   const [connectionPreview, setConnectionPreview] = useState<ConnectionPreview | null>(null);
   // When the selected-node green "+" is used with a tag active, the new move
@@ -1705,6 +1709,8 @@ export default function CollectionGraphPage() {
 
   // Graph analysis state - toggle for showing component colors
   const [showComponentColors, setShowComponentColors] = useState(false);
+  // Cursor for cycling the viewport through disconnected groups on click.
+  const [nextGroupIndex, setNextGroupIndex] = useState(0);
 
   // Graph search state
   const [graphSearch, setGraphSearch] = useState("");
@@ -1726,6 +1732,7 @@ export default function CollectionGraphPage() {
     setTimeout(() => {
       setSelectedMove(null);
       setAddConnectionMove(null);
+      setAddingFirstMove(false);
       setEditingMove(null);
       setAutoTagForNewMove(null);
       setPanelClosing(false);
@@ -2064,6 +2071,66 @@ export default function CollectionGraphPage() {
   const graphAnalysis = useMemo(() => {
     return analyzeGraph(initialNodes, initialEdges);
   }, [initialNodes, initialEdges]);
+
+  // One representative move id per disconnected group (indexed by component
+  // index). Prefer an entry point (in-degree 0) so we land on a group "start",
+  // otherwise the lowest-id node for stability.
+  const componentRepresentatives = useMemo(() => {
+    const byIndex = new Map<number, string[]>();
+    graphAnalysis.nodeComponentIndex.forEach((idx, nodeId) => {
+      if (!byIndex.has(idx)) byIndex.set(idx, []);
+      byIndex.get(idx)!.push(nodeId);
+    });
+    const entrySet = new Set(graphAnalysis.entryPoints);
+    const reps: string[] = [];
+    for (let i = 0; i < graphAnalysis.componentCount; i++) {
+      const ids = (byIndex.get(i) || []).slice().sort();
+      if (ids.length === 0) continue;
+      reps[i] = ids.find((id) => entrySet.has(id)) ?? ids[0];
+    }
+    return reps;
+  }, [graphAnalysis]);
+
+  // Pan/zoom the viewport to a node in the next disconnected group. Each click
+  // advances to the following group, wrapping around. Turns on component colors
+  // so the group you land on is visually distinct.
+  const focusNextDisconnectedGroup = useCallback(() => {
+    const count = graphAnalysis.componentCount;
+    if (count === 0) return;
+    const targetIndex = nextGroupIndex % count;
+    const repMoveId = componentRepresentatives[targetIndex];
+    setNextGroupIndex((prev) => (prev + 1) % count);
+    if (!repMoveId) return;
+
+    setShowComponentColors(true);
+
+    if (layout === "focus") {
+      setFocusedMoveId(repMoveId);
+      return;
+    }
+
+    // Map the move id to the currently rendered node (ids may be virtual in
+    // some layouts) and center on it.
+    const node = nodes.find(
+      (n) => n.id === repMoveId || virtualToRealIdMap.get(n.id) === repMoveId
+    );
+    const targetNodeId = node?.id ?? repMoveId;
+    requestAnimationFrame(() => {
+      reactFlowInstance.current?.fitView({
+        nodes: [{ id: targetNodeId }],
+        duration: 300,
+        maxZoom: 1.2,
+        padding: 0.5,
+      });
+    });
+  }, [
+    graphAnalysis.componentCount,
+    componentRepresentatives,
+    nextGroupIndex,
+    layout,
+    nodes,
+    virtualToRealIdMap,
+  ]);
 
   // Helper to apply final styling to nodes and edges
   const applyFinalStyling = useCallback(
@@ -2680,6 +2747,7 @@ export default function CollectionGraphPage() {
   // Handle deleting a move (and all its connections)
   const handleDeleteMoveConfirm = useCallback(
     async (moveId: string) => {
+      const deletedName = deleteConfirmMove?.name ?? "move";
       await client.delete(`/moves/${moveId}`);
       // Remove from local state immediately for responsiveness
       setMoves((prev) => prev.filter((m) => m.id !== moveId));
@@ -2695,8 +2763,17 @@ export default function CollectionGraphPage() {
       // Close panel and modal
       setSelectedMove(null);
       setDeleteConfirmMove(null);
+      // The delete is a soft delete, so offer to put it back. Restoring brings
+      // the move's connections back with it, hence the full graph reload.
+      showUndo({
+        message: `Deleted "${deletedName}"`,
+        onUndo: async () => {
+          await client.post(`/moves/${moveId}/restore`);
+          await reloadGraphData();
+        },
+      });
     },
-    [id]
+    [id, deleteConfirmMove, showUndo, reloadGraphData]
   );
 
   // Get the selected connection from selectedEdgeId
@@ -2773,7 +2850,8 @@ export default function CollectionGraphPage() {
     return <div className="empty-state">Collection not found</div>;
   }
 
-  const showPanel = selectedMove || addConnectionMove || editingMove || selectedConnection || panelClosing;
+  const showPanel =
+    selectedMove || addConnectionMove || addingFirstMove || editingMove || selectedConnection || panelClosing;
 
   const toolbar = (
     <>
@@ -2965,8 +3043,8 @@ export default function CollectionGraphPage() {
         {graphAnalysis.componentCount > 1 && !isFilterActive && (
           <button
             className={`disconnected-warning ${showComponentColors ? "active" : ""}`}
-            onClick={() => setShowComponentColors(!showComponentColors)}
-            title="Click to highlight disconnected groups"
+            onClick={focusNextDisconnectedGroup}
+            title="Click to jump to the next disconnected group"
           >
             ⚠️ {graphAnalysis.componentCount} disconnected groups
           </button>
@@ -3009,7 +3087,13 @@ export default function CollectionGraphPage() {
         {/* Empty state warnings */}
         {moves.length === 0 && (
           <div className="graph-empty-state">
-            Add moves to this collection to use the graph view.
+            <p>Add moves to this collection to use the graph view.</p>
+            <button
+              className="btn btn-primary"
+              onClick={() => setAddingFirstMove(true)}
+            >
+              + New Move
+            </button>
           </div>
         )}
         {layout === "core" && moves.length > 0 && !moves.some((m) => m.is_core) && (
@@ -3085,7 +3169,7 @@ export default function CollectionGraphPage() {
                 closing={panelClosing}
               />
             )}
-            {addConnectionMove && (
+            {(addConnectionMove || addingFirstMove) && (
               <AddConnectionPanel
                 sourceMove={addConnectionMove}
                 allMoves={allMoves}
@@ -3228,12 +3312,12 @@ export default function CollectionGraphPage() {
             title="Delete Move"
             message={
               <>
-                <p>Delete "{deleteConfirmMove.name}" and all its connections? This cannot be undone.</p>
+                <p>Delete "{deleteConfirmMove.name}" and hide its connections? You can undo this right after — deleted moves are kept, not erased.</p>
                 {deleteSequenceWarnings.length > 0 && (
                   <div className="modal-warning">
                     <strong>This move is used in {deleteSequenceWarnings.length} sequence{deleteSequenceWarnings.length > 1 ? "s" : ""}:</strong>
                     <ul>{deleteSequenceWarnings.map((name, i) => <li key={i}>{name}</li>)}</ul>
-                    <p>Deleting will remove it from these sequences.</p>
+                    <p>It will drop out of these sequences, and reappear in them if you restore it.</p>
                   </div>
                 )}
               </>

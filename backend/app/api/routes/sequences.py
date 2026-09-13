@@ -265,6 +265,12 @@ def _build_sequence_response(sequence: Sequence) -> SequenceWithEntriesResponse:
     total_beats = 0
 
     for sm in sequence.sequence_moves:
+        # A trashed move drops out of the sequence, matching what a delete did
+        # before soft delete (the FK cascade removed the entry). The row itself
+        # survives, so restoring the move puts the entry back in place.
+        if sm.move is not None and sm.move.deleted_at is not None:
+            continue
+
         if sm.move:
             beat_count = sm.move.beat_count
             move_name = sm.move.name
@@ -416,7 +422,9 @@ async def _get_user_move(
     db: AsyncSession, move_id: uuid.UUID, user_id: uuid.UUID
 ) -> Move:
     result = await db.execute(
-        select(Move).where(Move.id == move_id, Move.user_id == user_id)
+        select(Move).where(
+            Move.id == move_id, Move.user_id == user_id, Move.deleted_at.is_(None)
+        )
     )
     move = result.scalar_one_or_none()
     if move is None:

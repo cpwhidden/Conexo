@@ -12,7 +12,9 @@ export interface ConnectionPreview {
 }
 
 interface AddConnectionPanelProps {
-  sourceMove: Move;
+  /** null opens the New Move form on its own, with no connection to create —
+   *  used to seed the first move of an empty collection. */
+  sourceMove: Move | null;
   allMoves: Move[];
   collectionMoveIds: Set<string>;
   existingConnections: Connection[];
@@ -54,8 +56,11 @@ export default function AddConnectionPanel({
   const [searchLimit, setSearchLimit] = useState(20);
   const [saving, setSaving] = useState(false);
 
+  // With no source move the panel is nothing but the New Move form.
+  const standalone = sourceMove === null;
+
   // New move form state
-  const [showNewMoveForm, setShowNewMoveForm] = useState(false);
+  const [showNewMoveForm, setShowNewMoveForm] = useState(standalone);
   const [newMoveForm, setNewMoveForm] = useState<MoveCreate>({
     name: "",
     description: "",
@@ -101,7 +106,7 @@ export default function AddConnectionPanel({
 
   // Notify parent of preview connection changes
   useEffect(() => {
-    if (targetMoveId) {
+    if (targetMoveId && sourceMove) {
       const preview: ConnectionPreview =
         direction === "to"
           ? { sourceMoveId: sourceMove.id, targetMoveId }
@@ -110,7 +115,7 @@ export default function AddConnectionPanel({
     } else {
       onPreviewChange?.(null);
     }
-  }, [targetMoveId, direction, sourceMove.id, onPreviewChange]);
+  }, [targetMoveId, direction, sourceMove, onPreviewChange]);
 
   // Clear preview on unmount
   useEffect(() => {
@@ -222,23 +227,23 @@ export default function AddConnectionPanel({
     existingConnections
       .filter((c) =>
         direction === "to"
-          ? c.source_move_id === sourceMove.id
-          : c.target_move_id === sourceMove.id
+          ? c.source_move_id === sourceMove?.id
+          : c.target_move_id === sourceMove?.id
       )
       .map((c) =>
         direction === "to" ? c.target_move_id : c.source_move_id
       )
-  ), [existingConnections, sourceMove.id, direction]);
+  ), [existingConnections, sourceMove, direction]);
 
   // Filter moves: unconnected first, already-connected at the bottom
   const filteredMoves = useMemo(() => {
     const matching = allMoves.filter(
-      (m) => m.id !== sourceMove.id && multiTermMatch(m.name, searchQuery)
+      (m) => m.id !== sourceMove?.id && multiTermMatch(m.name, searchQuery)
     );
     const unconnected = matching.filter((m) => !connectedIds.has(m.id));
     const connected = matching.filter((m) => connectedIds.has(m.id));
     return [...unconnected, ...connected];
-  }, [allMoves, connectedIds, sourceMove.id, searchQuery]);
+  }, [allMoves, connectedIds, sourceMove, searchQuery]);
 
   // Move search keyboard navigation
   const visibleMoves = filteredMoves.slice(0, searchLimit);
@@ -397,6 +402,12 @@ export default function AddConnectionPanel({
         await onAddMoveToCollection(newMoveId);
       }
 
+      // Standalone: the move is the whole point, so there's nothing left to do.
+      if (standalone) {
+        onClose();
+        return;
+      }
+
       // Auto-select the new move
       setTargetMoveId(newMoveId);
       setShowNewMoveForm(false);
@@ -489,12 +500,22 @@ export default function AddConnectionPanel({
     }, 200);
   };
 
-  // Render the New Move Form overlay
+  // Standalone has no panel underneath, so it closes the whole panel instead of
+  // sliding the overlay back off the Add Connection view.
+  const dismissNewMoveForm = standalone ? onClose : handleCloseNewMoveForm;
+
+  // Render the New Move Form (an overlay above Add Connection, or the panel itself)
   const renderNewMoveForm = () => (
-    <div className={`slide-panel slide-panel-overlay-inner ${closingNewMoveForm ? "closing" : ""}`}>
+    <div
+      className={
+        standalone
+          ? `slide-panel ${closing ? "closing" : ""}`
+          : `slide-panel slide-panel-overlay-inner ${closingNewMoveForm ? "closing" : ""}`
+      }
+    >
       <div className="slide-panel-header">
         <h3>New Move</h3>
-        <button className="btn-icon" onClick={handleCloseNewMoveForm}>
+        <button className="btn-icon" onClick={dismissNewMoveForm}>
           &times;
         </button>
       </div>
@@ -785,7 +806,7 @@ export default function AddConnectionPanel({
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={handleCloseNewMoveForm}
+              onClick={dismissNewMoveForm}
             >
               Cancel
             </button>
@@ -794,6 +815,10 @@ export default function AddConnectionPanel({
       </div>
     </div>
   );
+
+  if (!sourceMove) {
+    return <div className="slide-panel-container">{renderNewMoveForm()}</div>;
+  }
 
   // Main Add Connection View (always rendered as base)
   return (

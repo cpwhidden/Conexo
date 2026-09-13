@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import client from "../api/client";
+import { useUndo } from "../components/UndoToast";
 import ConnectionList from "../components/ConnectionList";
 import MediaPlayer from "../components/MediaPlayer";
 import MediaUpload from "../components/MediaUpload";
@@ -12,6 +13,7 @@ import { useMoves } from "../hooks/useMoves";
 export default function MoveDetailPage() {
   const { moveId } = useParams();
   const navigate = useNavigate();
+  const { showUndo } = useUndo();
   const [move, setMove] = useState<Move | null>(null);
   const [mediaItems, setMediaItems] = useState<Media[]>([]);
   const [cues, setCues] = useState<Cue[]>([]);
@@ -98,13 +100,21 @@ export default function MoveDetailPage() {
   };
 
   const handleDeleteConfirm = async () => {
+    const deletedName = move?.name ?? "move";
     await client.delete(`/moves/${moveId}`);
     navigate("/");
+    showUndo({
+      message: `Deleted "${deletedName}"`,
+      onUndo: async () => {
+        await client.post(`/moves/${moveId}/restore`);
+        navigate(`/moves/${moveId}`);
+      },
+    });
   };
 
   if (!move) return <div className="loading">Loading...</div>;
 
-  // Find a collection to link to for graph view
+  // Find a collection to link to for flow view
   const firstCollection = moveCollections.length > 0 ? moveCollections[0] : null;
 
   return (
@@ -113,8 +123,8 @@ export default function MoveDetailPage() {
         <h2>{move.name}</h2>
         <div className="move-detail-actions">
           {firstCollection && (
-            <Link to={`/collections/${firstCollection.id}/graph?node=${moveId}`} className="btn btn-secondary">
-              Graph View
+            <Link to={`/collections/${firstCollection.id}/flow?node=${moveId}`} className="btn btn-secondary">
+              Flow View
             </Link>
           )}
           <Link to={`/moves/${moveId}/edit`} className="btn btn-secondary">
@@ -219,7 +229,7 @@ export default function MoveDetailPage() {
             return (
               <div key={col.id} className="collection-tags-group">
                 <Link
-                  to={`/collections/${col.id}/graph?layout=focus&node=${move.id}`}
+                  to={`/collections/${col.id}/flow?node=${move.id}`}
                   className="collection-tags-group-name"
                 >
                   {col.name}
@@ -297,12 +307,12 @@ export default function MoveDetailPage() {
           title="Delete Move"
           message={
             <>
-              <p>Delete "{move.name}" and all its connections? This cannot be undone.</p>
+              <p>Delete "{move.name}" and hide its connections? You can undo this right after — deleted moves are kept, not erased.</p>
               {deleteSequenceWarnings.length > 0 && (
                 <div className="modal-warning">
                   <strong>This move is used in {deleteSequenceWarnings.length} sequence{deleteSequenceWarnings.length > 1 ? "s" : ""}:</strong>
                   <ul>{deleteSequenceWarnings.map((name, i) => <li key={i}>{name}</li>)}</ul>
-                  <p>Deleting will remove it from these sequences.</p>
+                  <p>It will drop out of these sequences, and reappear in them if you restore it.</p>
                 </div>
               )}
             </>

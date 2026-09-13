@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -51,9 +51,12 @@ async def list_tags(
     # single round trip. Fall back to _get_user_collection only when empty,
     # to distinguish 404 (no such collection) from [] (empty tag list).
     result = await db.execute(
-        select(Tag, func.count(MoveTag.id).label("move_count"))
+        select(Tag, func.count(Move.id).label("move_count"))
         .join(Collection, Collection.id == Tag.collection_id)
         .outerjoin(MoveTag, MoveTag.tag_id == Tag.id)
+        .outerjoin(
+            Move, and_(Move.id == MoveTag.move_id, Move.deleted_at.is_(None))
+        )
         .where(
             Collection.id == collection_id,
             Collection.user_id == current_user.id,
@@ -93,7 +96,7 @@ async def get_tag_moves(
     result = await db.execute(
         select(Move)
         .join(MoveTag, MoveTag.move_id == Move.id)
-        .where(MoveTag.tag_id == tag_id)
+        .where(MoveTag.tag_id == tag_id, Move.deleted_at.is_(None))
         .order_by(Move.name)
     )
     return [
