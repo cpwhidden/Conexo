@@ -1954,6 +1954,35 @@ export default function CollectionGraphPage() {
     [filteredMoves]
   );
 
+  // Flow: jump to a random visible move other than the current one. With a tag
+  // active, picks among tagged moves and stays in the tag view.
+  const handleRandomFocus = useCallback(() => {
+    const candidates = filteredMoves.filter(
+      (m) => m.id !== focusedMoveId && (!activeTagId || taggedMoveIds.has(m.id))
+    );
+    if (candidates.length === 0) return;
+    const move = candidates[Math.floor(Math.random() * candidates.length)];
+    setFocusedMoveId(move.id);
+    setSelectedMove(null);
+    if (activeTagId) {
+      // The tag layout doesn't re-center on focus changes, so pan manually.
+      const displayedNode = nodes.find((n) => {
+        const realId = (n.data as Record<string, unknown>).realMoveId as string | undefined;
+        return (realId ?? n.id) === move.id;
+      });
+      if (displayedNode) {
+        requestAnimationFrame(() => {
+          reactFlowInstance.current?.fitView({
+            nodes: [{ id: displayedNode.id }],
+            duration: 300,
+            maxZoom: 1.2,
+            padding: 0.5,
+          });
+        });
+      }
+    }
+  }, [filteredMoves, focusedMoveId, activeTagId, taggedMoveIds, nodes]);
+
   // When filter hides the focused/selected move, BFS to find nearest visible move
   useEffect(() => {
     if (!isFilterActive || filteredMoveIds.size === 0) return;
@@ -3027,6 +3056,14 @@ export default function CollectionGraphPage() {
               title={focusSortAsc ? "Ascending" : "Descending"}
             >
               {focusSortAsc ? "↑" : "↓"}
+            </button>
+            <button
+              className="focus-sort-dir"
+              onClick={handleRandomFocus}
+              title={activeTag ? `Go to a random move tagged ${activeTag.name}` : "Go to a random move"}
+              aria-label="Go to a random move"
+            >
+              🎲
             </button>
             <label className="preview-toggle">
               <input
