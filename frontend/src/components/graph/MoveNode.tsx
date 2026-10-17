@@ -24,6 +24,8 @@ interface MoveNodeData {
   isColumnFirst?: boolean;
   onInfoClick?: (move: MoveNodeData["move"]) => void;
   showPreview?: boolean;
+  // Preview every node, not just the center and column tops.
+  previewAll?: boolean;
   // Graph analysis data
   connectionStatus?: {
     hasIncoming: boolean;
@@ -43,13 +45,14 @@ function MoveNode({ data, selected }: NodeProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const nodeData = data as unknown as MoveNodeData;
-  const { move, focusPosition, isColumnFirst, onInfoClick, connectionStatus, componentIndex, showComponentColors, showPreview, tagged, previewMediaId } = nodeData;
+  const { move, focusPosition, isColumnFirst, onInfoClick, connectionStatus, componentIndex, showComponentColors, showPreview, previewAll, tagged, previewMediaId } = nodeData;
 
   // Fetch media URL for preview. When a tag is active and this move has a media
   // item marked with it, prefer that media; otherwise fall back to the cover.
   // Show on the center node OR on the first move in any column.
   const effectiveMediaId = previewMediaId ?? move.cover_media_id;
-  const shouldShowPreview = showPreview && (focusPosition === "center" || isColumnFirst) && effectiveMediaId;
+  const shouldShowPreview =
+    showPreview && (previewAll || focusPosition === "center" || isColumnFirst) && effectiveMediaId;
   useEffect(() => {
     if (!shouldShowPreview) {
       setPreviewUrl(null);

@@ -431,9 +431,16 @@ Each view renders its own toolbar below the tab bar when needed.
 - **Search**: Searchable dropdown over moves and tags (Flow), keyboard navigation
   (arrow keys, Enter, Escape), results sorted by last-updated, clickable "more..."
   pagination (loads 20 more per click)
-- **Random Move (Flow)**: 🎲 button in the focus controls jumps to a random move
-  (never the current one), respecting the active collection filter. With a tag
-  active it picks among tagged moves and stays in the tag view.
+- **Random Jump (Flow)**: a "🎲 Any | 🎲 State" button pair in the focus controls
+  jumps to a random move or state (Any) or a random state only (State; dashed
+  border mirrors state nodes, since states are key transition points). Never
+  picks the current node; respects the active collection filter. With a tag
+  active, picks among tagged nodes and stays in the tag view. A button is
+  disabled when it has no candidates.
+- **Preview (Flow)**: "Off | Top | All" segmented control. Top previews the
+  center and the top move of each column (tagged moves in tag view); All
+  previews every move with media and spaces rows to make room for the previews.
+  URL: `?preview=1` (Top) or `?preview=all`.
 - **Edit Move Panel**: Opens from node context; follows node selection changes
   (switching nodes auto-updates the panel). Includes tag and media management.
 - See Section 9 for full Graph Visualization documentation, including Tag
@@ -826,7 +833,7 @@ prd/
 
 | Date | Version | Changes |
 |------|---------|---------|
-| 2026-10-17 | 1.10 | Added a Random Move button to the Flow focus controls (5.7). |
+| 2026-10-17 | 1.10 | Added Random Jump controls to the Flow focus controls: any node or state only (5.7). Preview checkbox replaced with an Off / Top / All control; All previews every move and spaces rows to fit (5.7). |
 | 2026-09-07 | 1.9 | Moves are now soft-deleted. DELETE /api/moves/{id} stamps deleted_at instead of removing the row, so videos, cues, connections and sequence entries survive and a delete is reversible via POST /api/moves/{id}/restore; GET /api/moves/deleted lists the trash (3.2, 6.2). Trashed moves are excluded from move lists, collection move counts and lists, graph-data nodes and edges, tag move lists and counts, and sequence entries (a trashed move drops out of a sequence and returns on restore). Frontend shows a 12-second "Deleted X - Undo" toast that survives the navigation after a delete (5.4, 9.1). Added scripts/backup-local.sh for rotating pg_dump backups of the local development database. Migration: moves.deleted_at column + partial index. |
 | 2026-05-23 | 1.8 | Added collection segment-control navigation (List/Flow/Graph/Learn/Tag) with Flow as the default view (5.6, 5.7). Added Tag Selection in the Flow view: tag chip, move/tag search, left-to-right tagged-move flow, green highlighting, L0–LX level control, tag-aware previews (9.3, 9.1). Added Media Tags: media_tags join table (3.3a), GET/POST/DELETE /media/{id}/tags, graph-data now returns tags + media_tags (6.3, 6.5, 9.2). Clickable tags in move detail (5.4). Cover media shown in graph detail panel. Connection-status indicators redrawn as overlay bars; focus layout uses a single straight top row; preview height capped and videos seek to #t=0.1 for a poster frame (9.1). Migration: media_tags table. |
 | 2026-03-19 | 1.7 | Added is_core field to Key Move Flags (3.2). Added video upload dialog with trim, rename, drag-and-drop zone, 0-byte detection (2.3, 6.3). Added video rename endpoint PATCH /videos/{id} (6.3). Added Ring layout and Core layout with Core Explore subview (9.1). Added connection highlighting: blue incoming, orange outgoing, 50% dim unrelated (9.1). Added background click to deselect (9.1). Migration: is_core column + batch update for States. |

@@ -2501,18 +2501,66 @@ select optgroup {
   border-color: #e94560;
 }
 
-.preview-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.8rem;
-  color: #aaa;
+.seg-group {
+  display: inline-flex;
+}
+
+.seg-btn {
+  padding: 0.4rem 0.6rem;
+  background: #2a2a3e;
+  border: 1px solid #444;
+  color: #eee;
+  font-size: 0.85rem;
+  white-space: nowrap;
   cursor: pointer;
+  transition: all 0.2s;
+}
+
+.seg-btn + .seg-btn {
+  margin-left: -1px;
+}
+
+.seg-btn:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.seg-btn:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+/* Dashed border mirrors .graph-node.state-node */
+.seg-btn.state {
+  border-style: dashed;
+}
+
+.seg-btn:hover:not(:disabled) {
+  position: relative;
+  background: #3a3a4e;
+  border-color: #e94560;
+}
+
+.seg-btn.active {
+  position: relative;
+  background: #e94560;
+  border-color: #e94560;
+  color: #fff;
+}
+
+.seg-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.seg-labeled {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   margin-left: 0.25rem;
 }
 
-.preview-toggle input[type="checkbox"] {
-  margin: 0;
+.seg-label {
+  font-size: 0.85rem;
+  color: #aaa;
 }
 
 /* Node cover media preview — floats above the node */

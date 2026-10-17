@@ -60,6 +60,18 @@ const EDGE_ORANGE = "#FF8C42";
 const TAG_GREEN = "#22c55e";
 
 // Focus mode sort options
+// Flow preview: off, only the top move of each column (plus the center), or
+// every move that has media.
+type PreviewMode = "off" | "top" | "all";
+const PREVIEW_MODES: { value: PreviewMode; label: string; title: string }[] = [
+  { value: "off", label: "Off", title: "Hide previews" },
+  { value: "top", label: "Top", title: "Preview the top move of each column" },
+  { value: "all", label: "All", title: "Preview every move in every column" },
+];
+// A preview floats ABOVE its node (CSS: bottom: 100% + 8px) capped at 360px,
+// so a preview-showing move needs this much clearance above it.
+const PREVIEW_CLEARANCE = 380;
+
 const FOCUS_SORT_OPTIONS = [
   { value: "difficulty", label: "Difficulty" },
   { value: "familiarity", label: "Familiarity" },
@@ -182,7 +194,8 @@ function getFocusLayoutElements(
   focusedMoveId: string,
   sortBy: string,
   sortAsc: boolean,
-  maxLevel: number = 1
+  maxLevel: number = 1,
+  previewAll: boolean = false
 ): {
   nodes: Node[];
   edges: Edge[];
@@ -196,6 +209,24 @@ function getFocusLayoutElements(
 
   // Get move data for sorting
   const getMoveData = (id: string) => moves.find((m) => m.id === id);
+
+  // Row y within a column. Rows are ROW_GAP apart, except that in "all"
+  // preview mode a row whose move has media gets clearance for the preview
+  // floating above it. The top row's preview sits above the column, so the
+  // tops of all columns still line up.
+  const columnRowYs = (virtualIds: string[]): number[] => {
+    const ys: number[] = [];
+    let y = START_Y;
+    virtualIds.forEach((virtualId, rowIndex) => {
+      if (rowIndex > 0) {
+        const realId = virtualNodes.get(virtualId)?.realMoveId;
+        const hasPreview = previewAll && !!(realId && getMoveData(realId)?.cover_media_id);
+        y += ROW_GAP + (hasPreview ? PREVIEW_CLEARANCE : 0);
+      }
+      ys.push(y);
+    });
+    return ys;
+  };
 
   // Sort function for moves within a column
   const getSortValue = (moveId: string): number | string => {
@@ -480,6 +511,9 @@ function getFocusLayoutElements(
   levelColumns.forEach((col, levelIndex) => {
     const level = levelIndex + 1;
 
+    const leftYs = columnRowYs(col.left);
+    const rightYs = columnRowYs(col.right);
+
     // Left column nodes
     col.left.forEach((virtualId, rowIndex) => {
       const vNode = virtualNodes.get(virtualId)!;
@@ -488,7 +522,7 @@ function getFocusLayoutElements(
         const x = CENTER_X - COLUMN_GAP * level;
         // Top move of every column aligns to a single row (straight line);
         // nodes stack downward within the column.
-        const y = START_Y + rowIndex * ROW_GAP;
+        const y = leftYs[rowIndex];
         positionedNodes.push({
           ...realNode,
           id: virtualId, // Use virtual ID
@@ -512,7 +546,7 @@ function getFocusLayoutElements(
         const x = CENTER_X + COLUMN_GAP * level;
         // Top move of every column aligns to a single row (straight line);
         // nodes stack downward within the column.
-        const y = START_Y + rowIndex * ROW_GAP;
+        const y = rightYs[rowIndex];
         positionedNodes.push({
           ...realNode,
           id: virtualId, // Use virtual ID
@@ -645,7 +679,7 @@ function getTagFocusLayoutElements(
   sortBy: string,
   sortAsc: boolean,
   maxLevel: number,
-  showPreview: boolean
+  previewMode: PreviewMode
 ): {
   nodes: Node[];
   edges: Edge[];
@@ -654,9 +688,6 @@ function getTagFocusLayoutElements(
 } {
   const COL_GAP = 280;
   const ROW_GAP = 90;
-  // A preview floats ABOVE its node (CSS: bottom: 100% + 8px) capped at 360px,
-  // so a preview-showing move needs this much clearance above it.
-  const PREVIEW_CLEARANCE = 380;
 
   // Sorting (mirrors getFocusLayoutElements semantics)
   const getMoveData = (id: string) => moves.find((m) => m.id === id);
@@ -682,10 +713,13 @@ function getTagFocusLayoutElements(
     return 0;
   };
 
-  // A move shows a preview only when it's tagged (the highlighted "center"
-  // nodes) — keeps clearance math predictable in the branching layout.
+  // Which moves get preview clearance. "top" previews only tagged moves (the
+  // highlighted "center" nodes) and column tops, which need no clearance;
+  // "all" previews every move with media.
   const showsPreviewFor = (id: string) =>
-    !!(showPreview && taggedMoveIds.has(id) && getMoveData(id)?.cover_media_id);
+    previewMode !== "off" &&
+    (previewMode === "all" || taggedMoveIds.has(id)) &&
+    !!getMoveData(id)?.cover_media_id;
 
   // Resolve a column: place items at their desired y, then push down to enforce
   // a minimum gap (larger above a preview-showing node), and recenter so the
@@ -1565,7 +1599,11 @@ export default function CollectionGraphPage() {
   const [coreShowDetail, setCoreShowDetail] = useState(false);
 
   // Focus preview state
-  const [showPreview, setShowPreview] = useState(() => initialParams.current.get("preview") === "1");
+  // URL: ?preview=1 (top, kept for older links) or ?preview=all
+  const [previewMode, setPreviewMode] = useState<PreviewMode>(() => {
+    const p = initialParams.current.get("preview");
+    return p === "all" ? "all" : p === "1" ? "top" : "off";
+  });
 
   // Active tag filter (Flow mode): when set, focus locks to a tagged move
   // and tagged moves are visually highlighted in the graph.
@@ -1598,14 +1636,14 @@ export default function CollectionGraphPage() {
     if (nodeId) params.set("node", nodeId);
     if (layout !== "focus") params.set("layout", layout);
     if (focusLevel !== 1) params.set("level", String(focusLevel));
-    if (showPreview) params.set("preview", "1");
+    if (previewMode !== "off") params.set("preview", previewMode === "all" ? "all" : "1");
     if (activeTagId) params.set("tag", activeTagId);
     const newSearch = params.toString();
     const newUrl = newSearch ? `${window.location.pathname}?${newSearch}` : window.location.pathname;
     if (window.location.search !== (newSearch ? `?${newSearch}` : "")) {
       window.history.replaceState(null, "", newUrl);
     }
-  }, [selectedMove?.id, focusedMoveId, layout, focusLevel, showPreview, activeTagId]);
+  }, [selectedMove?.id, focusedMoveId, layout, focusLevel, previewMode, activeTagId]);
 
   // Derived: the currently active tag object (null if no tag or tag was deleted)
   const activeTag = useMemo(
@@ -1954,12 +1992,19 @@ export default function CollectionGraphPage() {
     [filteredMoves]
   );
 
-  // Flow: jump to a random visible move other than the current one. With a tag
-  // active, picks among tagged moves and stays in the tag view.
-  const handleRandomFocus = useCallback(() => {
-    const candidates = filteredMoves.filter(
+  // Flow: random-jump candidates — visible moves other than the current one,
+  // limited to tagged moves while a tag is active. States are split out because
+  // they're the transition points worth landing on directly.
+  const randomCandidates = useMemo(() => {
+    const all = filteredMoves.filter(
       (m) => m.id !== focusedMoveId && (!activeTagId || taggedMoveIds.has(m.id))
     );
+    return { all, states: all.filter((m) => m.is_state) };
+  }, [filteredMoves, focusedMoveId, activeTagId, taggedMoveIds]);
+
+  // Flow: jump to a random candidate. With a tag active, stays in the tag view.
+  const handleRandomFocus = useCallback((statesOnly: boolean) => {
+    const candidates = statesOnly ? randomCandidates.states : randomCandidates.all;
     if (candidates.length === 0) return;
     const move = candidates[Math.floor(Math.random() * candidates.length)];
     setFocusedMoveId(move.id);
@@ -1981,7 +2026,7 @@ export default function CollectionGraphPage() {
         });
       }
     }
-  }, [filteredMoves, focusedMoveId, activeTagId, taggedMoveIds, nodes]);
+  }, [randomCandidates, activeTagId, nodes]);
 
   // When filter hides the focused/selected move, BFS to find nearest visible move
   useEffect(() => {
@@ -2054,7 +2099,8 @@ export default function CollectionGraphPage() {
         data: {
           move: move || { id: cm.move_id, name: cm.move_name, is_state: false },
           hasStoredPosition: cm.position_x !== null && cm.position_y !== null,
-          showPreview,
+          showPreview: previewMode !== "off",
+          previewAll: previewMode === "all",
           onAddConnection: (moveData: Move) => {
             setAutoTagForNewMove(null);
             setAddConnectionMove(moveData);
@@ -2094,7 +2140,7 @@ export default function CollectionGraphPage() {
       });
 
     return { initialNodes: flowNodes, initialEdges: flowEdges };
-  }, [collection, moves, connections, showPreview, filteredMoveIds]);
+  }, [collection, moves, connections, previewMode, filteredMoveIds]);
 
   // Analyze graph structure for connected components and node degrees
   const graphAnalysis = useMemo(() => {
@@ -2306,7 +2352,7 @@ export default function CollectionGraphPage() {
             focusSortBy,
             focusSortAsc,
             focusLevel,
-            showPreview
+            previewMode
           )
         : getFocusLayoutElements(
             initialNodes,
@@ -2316,7 +2362,8 @@ export default function CollectionGraphPage() {
             focusedMoveId,
             focusSortBy,
             focusSortAsc,
-            focusLevel
+            focusLevel,
+            previewMode === "all"
           );
       finalNodes = focusResult.nodes;
       baseEdges = focusResult.edges;
@@ -2347,8 +2394,12 @@ export default function CollectionGraphPage() {
               const fp = (n.data as Record<string, unknown>).focusPosition;
               return isRight ? fp === "right" : fp === "left";
             });
+            const previewNodeHasMedia =
+              previewMode === "all" &&
+              !!moves.find((m) => m.id === previewMoveId)?.cover_media_id;
             const maxY = sameColumnNodes.length > 0
-              ? Math.max(...sameColumnNodes.map((n) => n.position.y)) + ROW_GAP
+              ? Math.max(...sameColumnNodes.map((n) => n.position.y)) + ROW_GAP +
+                (previewNodeHasMedia ? PREVIEW_CLEARANCE : 0)
               : (finalNodes.find((n) => (n.data as Record<string, unknown>).focusPosition === "center")?.position.y ?? 0);
             finalNodes = [
               ...finalNodes,
@@ -2434,7 +2485,7 @@ export default function CollectionGraphPage() {
   // Note: selectedEdgeId intentionally excluded — edge selection styling is handled
   // by applyFinalStyling callback, not by re-running the full layout.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialNodes, initialEdges, layout, focusedMoveId, focusSortBy, focusSortAsc, focusLevel, connections, moves, graphAnalysis, showComponentColors, elkAlgorithm, applyFinalStyling, connectionPreview, coreExploreId, activeTagId, taggedMoveIds, showPreview]);
+  }, [initialNodes, initialEdges, layout, focusedMoveId, focusSortBy, focusSortAsc, focusLevel, connections, moves, graphAnalysis, showComponentColors, elkAlgorithm, applyFinalStyling, connectionPreview, coreExploreId, activeTagId, taggedMoveIds, previewMode]);
 
   // Sync ReactFlow node selection + edge highlighting with selectedMove / focusedMoveId
   // Runs separately from layout effect to avoid expensive re-layouts on every click
@@ -3057,22 +3108,45 @@ export default function CollectionGraphPage() {
             >
               {focusSortAsc ? "↑" : "↓"}
             </button>
-            <button
-              className="focus-sort-dir"
-              onClick={handleRandomFocus}
-              title={activeTag ? `Go to a random move tagged ${activeTag.name}` : "Go to a random move"}
-              aria-label="Go to a random move"
-            >
-              🎲
-            </button>
-            <label className="preview-toggle">
-              <input
-                type="checkbox"
-                checked={showPreview}
-                onChange={(e) => setShowPreview(e.target.checked)}
-              />
-              Preview
-            </label>
+            <div className="seg-group" role="group" aria-label="Go to a random node">
+              <button
+                className="seg-btn"
+                onClick={() => handleRandomFocus(false)}
+                disabled={randomCandidates.all.length === 0}
+                title={activeTag ? `Random move or state tagged ${activeTag.name}` : "Random move or state"}
+              >
+                🎲 Any
+              </button>
+              <button
+                className="seg-btn state"
+                onClick={() => handleRandomFocus(true)}
+                disabled={randomCandidates.states.length === 0}
+                title={
+                  randomCandidates.states.length === 0
+                    ? activeTag ? `No other states tagged ${activeTag.name}` : "No other states to jump to"
+                    : activeTag ? `Random state tagged ${activeTag.name}` : "Random state"
+                }
+              >
+                🎲 State
+              </button>
+            </div>
+            <div className="seg-labeled">
+              <span className="seg-label">Preview</span>
+              <div className="seg-group" role="radiogroup" aria-label="Preview">
+                {PREVIEW_MODES.map((opt) => (
+                  <button
+                    key={opt.value}
+                    className={`seg-btn ${previewMode === opt.value ? "active" : ""}`}
+                    role="radio"
+                    aria-checked={previewMode === opt.value}
+                    onClick={() => setPreviewMode(opt.value)}
+                    title={opt.title}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
